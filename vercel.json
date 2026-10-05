@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
 
-  "buildCommand": "npm ci && npm run build && node -e \"const f=require('fs');if(!f.existsSync('public/build/manifest.json')){console.error('FATAL: buildCommand did not produce public/build/manifest.json - @vite will throw ViteManifestNotFound on every page. Read the Vite output above in this build log.');process.exit(1)}\"",
+  "buildCommand": "npm ci && npm run build && node scripts/vercel-assert-vite-manifest.mjs",
 
   "functions": {
     "api/index.php": {
