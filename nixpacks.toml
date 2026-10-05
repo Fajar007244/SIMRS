@@ -1,0 +1,123 @@
+# ===========================================================================
+#  nixpacks.toml  -  the NO-DOCKER deploy path.
+#
+#  ---------------------------------------------------------------------------
+#  WHICH PATH SHOULD YOU USE?
+#  ---------------------------------------------------------------------------
+#  Use the DOCKERFILE path (the default, railway.json builder=DOCKERFILE)
+#  UNLESS you have a concrete reason not to. Reasons to prefer Nixpacks:
+#    * you cannot install Docker locally or in CI
+#    * you need the smallest possible image and do not need nginx tuning
+#    * you want Railway to pick the PHP version for you
+#
+#  Reasons to prefer the Dockerfile (the default):
+#    * nginx + php-fpm: `php artisan serve` and the PHP built-in server are
+#      SINGLE-THREADED, so under any real concurrent load requests queue up
+#      behind each other. The Dockerfile runs php-fpm with N pre-forked workers.
+#    * the PHP extension set is pinned and verified at build time. Nixpacks
+#      compiles extensions heuristically and can silently ship an image
+#      without pdo_pgsql, which fails only at runtime, as a 500.
+#    * assets are built in a separate Node stage and only public/build is
+#      carried over, so no Node toolchain ships.
+#
+#  IMPORTANT: only ONE builder is ever used. If railway.json exists and says
+#  builder=DOCKERFILE, Railway IGNORES this file. To use Nixpacks, DELETE
+#  railway.json (or change build.builder to NIXPACKS in the dashboard).
+#  Keeping both files is the single most common cause of "my Procfile changes
+#  did nothing".
+# ===========================================================================
+
+[phases.setup]
+# nixPkgs replaces Nixpacks' autodetected packages. PHP 8.2 matches the app's
+# composer.json constraint (^8.2) and the Dockerfile base image.
+nixPkgs = [
+  "php82",
+  "php82Packages.composer",
+  "php82Packages.pgsql",
+  "php82Packages.sqlite",
+  "php82Packages.mbstring",
+  "php82Packages.openssl",
+  "php82Packages.curl",
+  "php82Packages.zip",
+  "php82Packages.bcmath",
+  "php82Packages.fileinfo",
+  "nodejs_22",
+  "pnpm",
+]
+# Tell Nixpacks this is a PHP project so it does not try to run a static site
+# build. Mirrors what the Dockerfile assumes.
+nixLibs = ["php82Packages.composer"]
+
+[phases.build]
+cmds = [
+  # Dependencies first, and separately, so editing app/ does not re-download
+  # the whole dependency tree. `npm ci` uses package-lock.json exactly; using
+  # `npm install` here would silently rewrite the lockfile.
+  "composer install --no-dev --no-scripts --no-autoloader --no-interaction --prefer-dist --optimize-autoloader",
+  "npm ci --no-audit --no-fund",
+  # Assets MUST be built here, in the image. Vite empties its outDir first, so
+  # no stale hashed asset survives.
+  "npm run build",
+  # Composer scripts are deferred until the app source is present. See the
+  # Dockerfile for the long explanation of why --no-scripts is mandatory.
+  "composer dump-autoload --no-dev --optimize --classmap-authoritative",
+  # Fail the BUILD rather than production. This is the exact failure that
+  # produces "Vite manifest not found at public/build/manifest.json".
+  "test -f public/build/manifest.json",
+  "test -f vendor/autoload.php",
+  "mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache",
+  "chmod -R 775 storage bootstrap/cache",
+  # Sanity gate mirroring the Dockerfile's. pdo_pgsql is the one that matters:
+  # without it every single database query fails in production only.
+  "php -r 'exit(extension_loaded(\"pdo_pgsql\") ? 0 : 1);' || { echo 'FATAL: pdo_pgsql tidak termuat' >&2; exit 1; }",
+  "php -r 'exit(extension_loaded(\"mbstring\") ? 0 : 1);' || { echo 'FATAL: mbstring tidak termuat' >&2; exit 1; }",
+]
+
+[phases.start]
+# The single-threaded PHP built-in server needs a front-controller fallback:
+# with `-t public` and no router it answers `/` and 404s for every other path
+# (/login, /pasien, /encounters/... all Inertia/Blade routes with no file on
+# disk). The router below is the exact equivalent of nginx's
+# `try_files $uri $uri/ /index.php`:
+#   - an existing file under public/ is served by the built-in server directly
+#   - everything else is handed to public/index.php
+#
+# It is generated at start time into the project root instead of being
+# committed, so there is no second source of truth to keep in sync.
+cmds = [
+  "cat > router.php <<'ROUTER'\n<?php\n$root = getcwd();\n$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);\nif ($path !== '/' && is_file($root . '/public' . $path)) {\n    return false;\n}\nrequire $root . '/public/index.php';\nROUTER",
+  # --- runtime parity with the Dockerfile ---------------------------------
+  # Wait for Postgres, migrate, and cache -- exactly what docker/entrypoint.sh
+  # does, so both deploy paths behave identically. The migrate lock prevents
+  # two overlapping deploys from racing.
+  "php artisan config:clear --no-interaction || true",
+  "if [ \"${CACHE_CONFIG:-true}\" = \"true\" ]; then php artisan config:cache; fi",
+  "if [ \"${CACHE_ROUTES:-true}\" = \"true\" ]; then php artisan route:cache || echo 'WARN: route:cache gagal, app tetap jalan'; fi",
+  "if [ \"${CACHE_VIEWS:-true}\" = \"true\" ]; then php artisan view:cache; fi",
+  "if [ \"${RUN_MIGRATIONS:-true}\" = \"true\" ]; then php artisan migrate --force --no-interaction; fi",
+  # Workers. Without this the built-in server handles exactly ONE request at a
+  # time, which is the main reason to prefer the Dockerfile.
+  "if [ \"${SEED_DEMO_DATA:-false}\" = \"true\" ]; then php artisan db:seed --force; fi",
+  "PHP_CLI_SERVER_WORKERS=4 php -S 0.0.0.0:${PORT:-8080} -t public router.php"
+]
+
+# Healthcheck: configured in railway.json as healthcheckPath = "/up", which
+# applies to the Nixpacks builder too. It is deliberately NOT repeated here,
+# because [start-cmd] is not a valid nixpacks phase (valid phases are
+# setup / build / start) and an unknown phase makes the plan fail.
+
+[variables]
+APP_ENV = "production"
+APP_DEBUG = "false"
+LOG_CHANNEL = "stderr"
+LOG_LEVEL = "info"
+DB_CONNECTION = "pgsql"
+SESSION_DRIVER = "database"
+CACHE_STORE = "database"
+QUEUE_CONNECTION = "sync"
+BROADCAST_CONNECTION = "log"
+FILESYSTEM_DISK = "local"
+CACHE_CONFIG = "true"
+CACHE_ROUTES = "true"
+CACHE_VIEWS = "true"
+RUN_MIGRATIONS = "false"

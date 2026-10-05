@@ -1,0 +1,270 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+.pulse-live {
+  animation: livePulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.96); }
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-area, #print-area * {
+    visibility: visible;
+  }
+  #print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* ============================================================================
+   SHARED UI KIT - reusable component classes
+   Ported 1:1 dari phase1/*.html. Semua kelas di bawah memakai nilai yang sama
+   dengan markup statis phase1 (rounded-xl border border-slate-200 bg-white
+   shadow-sm, tombol bg-sky-600 hover:bg-sky-700, tabel text-xs dll).
+
+   PENTING untuk 4 developer halaman:
+   - `card` / `panel` TIDAK boleh dicampur. Pakai `card` kalau region punya
+     region punya header + body + footer (tabel, panel dengan tombol),
+     `panel` untuk blok isi polos tanpa chrome.
+   - Semua warna di sini = warna phase1. Jangan mengarang warna baru; kalau
+     butuh warna khusus, pakai kelas utilitas Tailwind langsung.
+   ========================================================================== */
+@layer components {
+  /* ---------- Card (header + body + footer) ---------- */
+  .card {
+    @apply overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+  .card-header {
+    @apply flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3;
+  }
+  .card-title {
+    @apply flex items-center gap-2 text-sm font-bold text-slate-900;
+  }
+  .card-body {
+    @apply p-4;
+  }
+  .card-footer {
+    @apply flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-500;
+  }
+
+  /* ---------- Panel (tanpa chrome, isi saja) ---------- */
+  .panel {
+    @apply rounded-xl border border-slate-200 bg-white p-4 shadow-sm;
+  }
+  .panel-title {
+    @apply text-sm font-bold text-slate-900;
+  }
+
+  /* ---------- Button ---------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-3 py-2 text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-sky-600 text-white hover:bg-sky-700 focus:ring-sky-500;
+  }
+  .btn-secondary {
+    @apply border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus:ring-slate-400;
+  }
+  .btn-ghost {
+    @apply bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus:ring-slate-300;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+  }
+  .btn-success {
+    @apply bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1.5 text-[11px];
+  }
+  .btn-icon {
+    @apply h-8 w-8 rounded-lg p-0;
+  }
+
+  /* ---------- Form ---------- */
+  .input {
+    @apply block w-full rounded-lg border border-slate-300 bg-white text-xs text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-sky-500 focus:ring-sky-500;
+  }
+  .select {
+    @apply block w-full rounded-lg border border-slate-300 bg-white pr-9 text-xs font-medium text-slate-800 shadow-sm focus:border-sky-500 focus:ring-sky-500;
+  }
+  .textarea {
+    @apply block w-full rounded-lg border border-slate-300 bg-white text-xs leading-relaxed text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-sky-500 focus:ring-sky-500;
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold text-slate-700;
+  }
+  .field {
+    @apply w-full;
+  }
+  .field-hint {
+    @apply mt-1 text-[11px] text-slate-500;
+  }
+  .input-error {
+    @apply border-red-400 text-red-700 placeholder:text-red-300 focus:border-red-500 focus:ring-red-500;
+  }
+
+  /* ---------- Table ---------- */
+  .table {
+    @apply w-full border-collapse text-left text-xs text-slate-700;
+  }
+  .table thead {
+    @apply border-b border-slate-200 bg-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-600;
+  }
+  .table tbody {
+    @apply divide-y divide-slate-200;
+  }
+  .table tfoot {
+    @apply border-t border-slate-200 bg-slate-50;
+  }
+  .thead {
+    @apply bg-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-600;
+  }
+  .th {
+    @apply px-3 py-3 text-left font-semibold;
+  }
+  .td {
+    @apply px-3 py-3 align-middle;
+  }
+  .table-compact .th {
+    @apply px-2.5 py-2;
+  }
+  .table-compact .td {
+    @apply px-2.5 py-2;
+  }
+  .row-hover tbody tr {
+    @apply transition;
+  }
+  .row-hover tbody tr:hover {
+    @apply bg-slate-50;
+  }
+  .table-sticky thead th {
+    @apply sticky top-0 z-10 bg-slate-100;
+  }
+
+  /* ---------- Tabs (tab internal panel, bukan tab modul utama) ---------- */
+  .tabs {
+    @apply flex flex-wrap items-center gap-1;
+  }
+  .tab-link {
+    @apply rounded-lg px-3.5 py-2 text-xs font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800;
+  }
+  .tab-link-active {
+    @apply bg-sky-600 text-white shadow-sm hover:bg-sky-700 hover:text-white;
+  }
+
+  /* ---------- Tipografi utilitas ---------- */
+  .stat-value {
+    @apply font-mono text-2xl font-black text-slate-900;
+  }
+  .mono {
+    @apply font-mono;
+  }
+  .divider {
+    @apply h-3.5 w-px bg-slate-300;
+  }
+  .link {
+    @apply font-semibold text-sky-700 underline-offset-2 hover:text-slate-900 hover:underline;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-bold;
+  }
+  .scroll-x {
+    @apply overflow-x-auto overflow-y-hidden;
+  }
+
+  /* ---------- Blok kosong (state "belum ada data") ---------- */
+  .empty-block {
+    @apply rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center text-xs text-slate-500;
+  }
+
+  /* ---------- Animasi (lihat keyframes di bawah file) ---------- */
+  .anim-fade {
+    animation: ewFadeIn 0.15s ease-out both;
+  }
+  .anim-pop {
+    animation: ewPopIn 0.16s ease-out both;
+  }
+  .anim-slide {
+    animation: ewSlideIn 0.18s ease-out both;
+  }
+  .anim-grow-x {
+    animation: ewGrowX 0.5s ease-out both;
+    transform-origin: left center;
+  }
+  .anim-spin {
+    animation: ewSpin 0.7s linear infinite;
+  }
+}
+
+/* ============================================================================
+   KEYFRAMES
+   `livePulse` (dipakai .pulse-live) didefinisikan di bagian atas file ini
+   dan sengaja TIDAK diulang di sini.
+   ========================================================================== */
+@keyframes ewFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ewPopIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ewSlideIn {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ewGrowX {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes ewSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   PRINT - tambahanRules dari phase1/profil.html.
+   Blok @media print utama (isolasi #print-area + .no-print) ada di bagian atas
+   file dan tidak diubah.
+   ========================================================================== */
+@media print {
+  body {
+    background: #ffffff !important;
+  }
+  .print-border {
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+  }
+  .table thead,
+  .thead {
+    background: #f1f5f9 !important;
+  }
+}

@@ -1,0 +1,79 @@
+# ---------------------------------------------------------------------------
+# .dockerignore yang WAJIB diteruskan ke daemon Docker.
+#
+# Dockerfile memakai 3 tahap (assets -> vendor -> runtime) dan seluruh isi
+# build context dikirim ke daemon. Yang dikecualikan di bawah hanya dua jenis:
+#   (a) file yang tidak dibutuhkan image, atau
+#   (b) file yang AKAN menimpa / mengotori hasil build di dalam image.
+#
+# ATURAN EMAS: kalau kamu ragu, JANGAN ignore. Salah ignore = deploy rusak.
+# ---------------------------------------------------------------------------
+
+# --- Git & CI (tidak dipakai di dalam image) -------------------------------
+.git
+.gitattributes
+.github
+.gitlab-ci.yml
+
+# --- Dependensi: DI-INSTALL ULANG di dalam image ----------------------------
+# node_modules dari host berisi binary untuk platform yang berbeda (host ini
+# win32, image linux). Membawanya masuk bisa membuat `npm ci` tidak berjalan
+# atau aset Vue hasil build rusak.
+node_modules
+# vendor di-install ulang Composer di dalam image (--no-dev --prefer-dist)
+# supaya paket dev tidak ikut ter-deploy dan autoloader teroptimasi.
+vendor
+
+# --- Hasil build frontend: DI-BANGUN DI DALAM IMAGE -------------------------
+# public/build dari `npm run build` lokal berisi hash asset yang bisa tidak
+# cocok dengan source di image. Dockerfile sengaja TIDAK meng-COPY public/build
+# dari context; seluruh aset dibangun ulang pada stage `assets`.
+public/build
+public/hot
+public/storage
+
+# --- Rahasia: tidak boleh bocor ke dalam image ------------------------------
+# Dockerfile tidak meng-ADD .env, tapi tetap jaga-jaga agar file ini tidak
+# ikut ter-*copy* oleh `COPY . .`.
+.env
+.env.*
+!.env.example
+!.env.production.example
+*.key
+
+# --- Dokumentasi, test, dan aset repo yang tidak dipakai saat runtime -------
+docs
+phase1
+tests
+scripts
+README.md
+*.md
+phpunit.xml
+.editorconfig
+.dockerignore
+Dockerfile
+docker-compose.yml
+docker-compose.pgsql.yml
+railway.json
+nixpacks.toml
+Procfile
+artifacts
+.screenshots
+
+# --- Log, cache, dan OS junk ----------------------------------------------
+*.log
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+.zed
+.nova
+.fleet
+.phpunit.cache
+.phpunit.result.cache
+.phpactor.json
+auth.json
+Homestead.json
+Homestead.yaml

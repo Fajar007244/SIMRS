@@ -1,0 +1,249 @@
+# ===========================================================================
+#  render.yaml - Blueprint Render untuk SIMRS RSP Rotinsulu
+#  ---------------------------------------------------------------------------
+#  File ini membuat DUA resource sekaligus:
+#    1. databases -> satu instance PostgreSQL milik Render
+#    2. services  -> satu Web Service yang build dari Dockerfile
+#
+#  Cara pakai paling singkat (kalau repo sudah ada di GitHub):
+#      Render Dashboard > New > Blueprint > pilih repo > Apply
+#  Render membaca file ini dari ROOT repo. Karena Dockerfile ada di dalam
+#  folder backend/, repo GitHub ini harus berisi isi folder backend/ di root.
+#
+#  Panduan lengkap untuk orang pertama: docs/RENDER.md
+#  Referensi semua environment variable   : .env.production.example
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+#  1. DATABASE POSTGRESQL
+# ---------------------------------------------------------------------------
+databases:
+  - name: simrs-ews-db
+    plan: free
+
+    # Versi PostgreSQL dikunci ke 16 agar sama dengan yang dipakai di
+    # docker-compose.pgsql.yml dan yang disebut di README.
+    # CATATAN: nilai ini TIDAK bisa diubah setelah database dibuat.
+    postgresMajorVersion: '16'
+
+    # databaseName dan user SENGAJA TIDAK ditulis di sini.
+    # Kalau tidak ditulis, Render yang membuatkannya sendiri (nilai acak yang
+    # aman, nama database diturunkan dari `name`). Ini setara dengan
+    # "biarkan Render yang mengisi", dan berarti kita tidak perlu menyalin
+    # kredensial dari mana pun - semuanya sudah ada di dalam connection string
+    # yang disuntikkan ke Web Service.
+    #
+    #   nama database -> dipakai Laravel sebagai DB_DATABASE
+    #   nama user     -> dipakai Laravel sebagai DB_USERNAME
+    #
+    # Password-nya juga dibuat Render, tidak pernah ditampilkan lagi, dan
+    # tidak perlu kita tulis di file ini.
+
+    # HANYA koneksi dari jaringan internal Render yang diizinkan.
+    # Web Service dan database ini dibuat dalam satu Blueprint, jadi keduanya
+    # berada di workspace yang sama dan saling terhubung lewat jaringan privat
+    # tanpa perlu keluar ke internet publik.
+    #
+    # Untuk menelusuri database dari komputer sendiri (psql, Beekeeper Studio),
+    # ubah sementara blok di bawah menjadi:
+    #     ipAllowList:
+    #       - source: 0.0.0.0/0
+    #         description: sementara untuk akses dari luar
+    # lalu kembalikan lagi ke `ipAllowList: []` setelah selesai.
+    ipAllowList: []
+
+
+# ---------------------------------------------------------------------------
+#  2. WEB SERVICE (backend Laravel + Inertia + nginx + php-fpm)
+# ---------------------------------------------------------------------------
+services:
+  - type: web
+    name: simrs-ews-app
+
+    # WAJIB `docker`. Proyek ini memakai image sendiri (Dockerfile 3 tahap:
+    # assets -> vendor -> runtime) dan TIDAK memakai runtime native PHP Render.
+    # Image itu sudah berisi nginx + php-fpm + seluruh extension (pdo_pgsql,
+    # mbstring, intl, zip) yang sudah diverifikasi saat build.
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+
+    # Paket instance. Bisa diubah kapan saja lewat dashboard.
+    # Untuk produksi klinis yang harus hidup 24/7, naikkan ke `starter`
+    # (0.5 CPU / 512 MB). Lihat bagian "Free tier spin-down" di docs/RENDER.md.
+    plan: free
+
+    # Branch yang di-deploy. render.yaml ada di root repo, jadi biasanya main.
+    branch: main
+    autoDeployTrigger: commit
+
+    # Path yang diprobe Render setelah container start. Terdaftar di
+    # bootstrap/app.php (`health: '/up'`), tidak butuh login, dan tidak
+    # menyentuh database.
+    healthCheckPath: /up
+
+    # -----------------------------------------------------------------------
+    #  numInstances: 1 - SENGAJA dikunci.
+    #
+    #  .Session memakai tabel PostgreSQL (SESSION_DRIVER=database) dan cache
+    #   juga di database (CACHE_STORE=database), jadi dari sisi session dan
+    #   cache aplikasi ini SEBENARNYA mampu menjalankan lebih dari satu instance: semua
+    #   pengguna dapat melihat session yang sama, dan tidak ada file lokal yang
+    #   menjadi sumber kebenaran.
+    #
+    #  .Yang TIDAK bisa diskalakan adalah migrasi. RUN_MIGRATIONS=true membuat
+    #   setiap container yang start menjalankan `php artisan migrate --force`.
+    #   Dua instance yang start bersamaan bisa menjalankan migrasi yang sama
+    #   pada detik yang sama, dan PostgreSQL hanya mengunci tabel `migrations` -
+    #   bukan tabel klinis yang sedang ditulis migrasi tersebut.
+    #
+    #  .Owner juga berada di paket single-instance, jadi tidak ada gunanya
+    #   menambah instance. Kalau nanti migrasi dipindah ke `render jobs` atau
+    #   preDeployCommand, barulah numInstances boleh dinaikkan.
+    # -----------------------------------------------------------------------
+    numInstances: 1
+
+    envVars:
+      # --- Yang harus diisi manual --------------------------------------------
+      # sync: false membuat Render MEMBUKA form isian di dashboard saat
+      # Blueprint diterapkan, dan TIDAK menimpa nilai yang sudah ada pada
+      # service lama.
+      - key: APP_KEY
+        sync: false
+
+      # APP_URL wajib sama persis dengan URL publik service Render, tanpa
+      # garis miring di akhir, contoh: https://simrs-ews-app.onrender.com
+      # Salah set -> link setelah login melompat ke localhost, atau 419.
+      - key: APP_URL
+        sync: false
+
+      # --- Yang boleh dibuat Render sendiri ---------------------------------
+      # CATATAN PENTING untuk generateValue: true
+      #
+      #   `generateValue: true` membuat Render menghasilkan "base64-encoded
+      #   256-bit value": 44 karakter, TANPA prefix `base64:`.
+      #   APP_KEY milik Laravel membutuhkannya tepat 32 BYTE setelah prefix
+      #   `base64:` dilepas. config/app.php memakai AES-256-CBC, dan
+      #   Encrypter::supported() menolak key yang panjangnya bukan 32 byte.
+      #   Jadi APP_KEY JANGAN memakai generateValue: hasilnya
+      #   RuntimeException "Unsupported cipher or incorrect key length" pada
+      #   setiap request. Tetap `sync: false`, lalu isi dengan hasil:
+      #       php artisan key:generate --show
+      #
+      #   Untuk kredensial database, Render yang menanganinya sendiri: lihat
+      #   blok `databases:` di atas (databaseName dan user sengaja dikosongkan).
+
+      # --- Identitas aplikasi ------------------------------------------------
+      - key: APP_NAME
+        value: "SIMRS RSP Rotinsulu"
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+
+      # Locale aplikasi. SELURUH antarmuka ditulis dalam Bahasa Indonesia,
+      # jadi locale produksi harus `id`.
+      # APP_FAKER_LOCALE TETAP en_US: paket Faker tidak punya locale id_ID,
+      # dan menggantinya membuat seeding data dummy gagal.
+      - key: APP_LOCALE
+        value: id
+      - key: APP_FALLBACK_LOCALE
+        value: id
+      - key: APP_FAKER_LOCALE
+        value: en_US
+
+      # --- Database ----------------------------------------------------------
+      - key: DB_CONNECTION
+        value: pgsql
+
+      # Render menyuntikkan DATABASE_URL dari database di atas. JANGAN tulis
+      # DB_HOST/DB_PORT/DB_DATABASE/DB_USERNAME/DB_PASSWORD secara manual di
+      # sini: config/database.php membaca DATABASE_URL lebih dulu dan
+      # mengabaikan semua DB_* lain.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: simrs-ews-db
+          property: connectionString
+
+      # --- Session, cache, antrean -------------------------------------------
+      # WAJIB `database`, bukan `file`: file session ada DI DALAM container dan
+      # hilang setiap container di-restart, sehingga semua pengguna langsung
+      # logout.
+      - key: SESSION_DRIVER
+        value: database
+      - key: SESSION_LIFETIME
+        value: "120"
+      # Cookie WAJIB tidak bisa dibaca JavaScript (mitigasi XRF).
+      - key: SESSION_HTTP_ONLY
+        value: "true"
+      # Path "/" berlaku untuk semua path. Kalau salah, cookie tidak terkirim
+      # dan login selalu gagal tanpa pesan yang jelas.
+      - key: SESSION_PATH
+        value: "/"
+      # JANGAN true untuk aplikasi klinis: petugas bisa membiarkan tab
+      # terbuka antar shift, dan session punyanya ikut hilang.
+      - key: SESSION_EXPIRE_ON_CLOSE
+        value: "false"
+      - key: SESSION_SAME_SITE
+        value: lax
+      # Render sudah menyediakan HTTPS di depan service, jadi cookie wajib
+      # secure. Tanpa `secure`, cookie tetap terkirim saat diakses via HTTP
+      # sehingga bisa dicegat.
+      - key: SESSION_SECURE_COOKIE
+        value: "true"
+
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: sync
+      - key: BROADCAST_CONNECTION
+        value: log
+      - key: FILESYSTEM_DISK
+        value: local
+
+      # --- Logging -----------------------------------------------------------
+      # WAJIB `stderr`: Render hanya menangkap stdout/stderr container. Kalau
+      # log ditulis ke storage/logs/laravel.log, isinya hilang saat container
+      # di-restart, dan gejalanya "error 500 tapi log kosong".
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: info
+
+      # --- Keamanan ----------------------------------------------------------
+      - key: BCRYPT_ROUNDS
+        value: "12"
+
+      # --- Lifecycle container (dibaca docker/entrypoint.sh) ------------------
+      # Cache artefak Laravel saat boot: WAJIB true di produksi.
+      - key: CACHE_CONFIG
+        value: "true"
+      - key: CACHE_ROUTES
+        value: "true"
+      - key: CACHE_VIEWS
+        value: "true"
+
+      # Batas kesabaran menunggu PostgreSQL. Render menjalankan container app
+      # dan database secara paralel, jadi dibutuhkan retry loop.
+      - key: DB_WAIT_SECONDS
+        value: "60"
+      - key: DB_WAIT_INTERVAL
+        value: "2"
+
+      # true = `php artisan migrate --force` dijalankan tiap boot, setelah
+      # PostgreSQL siap. Dipilih karena inilah cara paling sederhana
+      # menjalankan migrasi tanpa harus shell ke dalam container.
+      #
+      # RISIKO: migrasi yang salah akan ikut dijalankan pada deploy berikutnya.
+      # Sebelum mengubah kode migrasi, baca bagian migrasi di docs/RENDER.md.
+      # Setelah schema selesai stabil, tidak ada salahnya menurunkan lagi ke
+      # false dan menjalankan migrasi manual lewat SSH atau CLI.
+      - key: RUN_MIGRATIONS
+        value: "true"
+
+      # WAJIB false. Seeder data klinis tidak idempoten total: menjalankannya
+      # pada database yang sudah berisi data pasien nyata berisiko
+      # menduplikasi baris. Untuk demo, jalankan manual satu kali lewat
+      # `render ssh`, lalu biarkan tetap false selamanya.
+      - key: SEED_DEMO_DATA
+        value: "false"

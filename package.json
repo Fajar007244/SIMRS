@@ -1,0 +1,30 @@
+{
+    "$schema": "https://www.schemastore.org/package.json",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite",
+        "check:undefined": "node scripts/check-undefined-identifiers.mjs",
+        "check:render": "node scripts/check-render.mjs",
+        "dump:props": "php scripts/dump-render-props.php",
+        "verify:ews": "php scripts/verify-ews-seed.php",
+        "verify:save": "php scripts/verify-ews-save.php"
+    },
+    "devDependencies": {
+        "@tailwindcss/container-queries": "^0.1.1",
+        "@tailwindcss/forms": "^0.5.11",
+        "autoprefixer": "^10.6.1",
+        "axios": "^1.11.0",
+        "concurrently": "^9.0.1",
+        "laravel-vite-plugin": "^2.1.0",
+        "postcss": "^8.5.28",
+        "tailwindcss": "^3.4.19",
+        "vite": "^7.0.7"
+    },
+    "dependencies": {
+        "@inertiajs/vue3": "^2.3.28",
+        "@vitejs/plugin-vue": "^6.0.9",
+        "vue": "^3.5.43"
+    }
+}

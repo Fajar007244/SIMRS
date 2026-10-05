@@ -1,0 +1,102 @@
+# ===========================================================================
+#  .gitignore - apa yang TIDAK ikut ter-commit ke Git
+#  ---------------------------------------------------------------------------
+#  ATURAN EMAS untuk repo ini:
+#
+#    1. File yang di-ignore di sini tidak ikut ter-commit, jadi juga tidak
+#       ikut masuk ke build context Render. Kalau sebuah file dibutuhkan saat
+#       build image, file itu tidak boleh ada di daftar ini.
+#    2. Kalau sebuah file ternyata dibutuhkan image dan ter-ignore, perbaikannya
+#       menghapus aturan ignore-nya - bukan menyalin file secara manual.
+#
+#  Verifikasi cepat setelah mengubah file ini:
+#      git check-ignore -v .env vendor node_modules public/build
+#      git status --short
+# ===========================================================================
+
+# --- Rahasia environment ---------------------------------------------------
+# .env berisi APP_KEY dan password database produksi. Kalau bocor di GitHub,
+# nilainya harus dianggap sudah kompromi dan dirotasi.
+/.env
+/.env.backup
+/.env.production
+/.env.testing
+/.env.local
+/.env.*.local
+/.env.pint
+# Wildcard di bawah menangkap .env.<apa pun> yang mungkin tidak kita ingat,
+# jadi dua aturan berikutnya wajib menaruhnya kembali ke daftar.
+/.env.*
+# Contohnya justru HARUS ikut ter-commit, karena docs/RENDER.md merujuk ke
+# keduanya dan developer lain membutuhkannya.
+!.env.example
+!.env.production.example
+
+# --- Dependensi: DI-INSTALL ULANG di dalam image Docker --------------------
+# node_modules dari mesin lokal berisi binary untuk platform lain (host win32,
+# image linux). Membawanya masuk bisa membuat `npm ci` gagal.
+# vendor di-install ulang oleh Composer di dalam image dengan --no-dev, supaya
+# paket development tidak ikut ter-deploy.
+/vendor
+/node_modules
+
+# --- Aset frontend: DIBANGUN DI DALAM IMAGE, bukan di-commit ---------------
+# `npm run build` menghasilkan nama file ber-hash yang berubah setiap build.
+# Kalau hasil build lokal ikut ter-commit, hash-nya bisa tidak cocok dengan
+# source di dalam image. Gejalanya: "Vite manifest not found" atau asset 404.
+#
+# Dockerfile tidak meng-COPY public/build dari context. Stage `assets`
+# (node:22-alpine) membangunnya ulang, lalu hasilnya disalin ke image runtime.
+# Meng-commit folder ini karena itu tidak pernah menolong.
+/public/build
+/public/hot
+/public/storage
+
+# --- Database SQLite lokal -------------------------------------------------
+# Aplikasi memakai PostgreSQL di produksi. File .sqlite ini hanya untuk
+# pengembangan lokal, isinya berisi data demo, dan tidak pernah dipakai Render.
+/database/*.sqlite
+/database/*.sqlite-journal
+/database/*.sqlite-wal
+/database/*.sqlite-shm
+
+# --- Runtime storage ----------------------------------------------------
+#
+# Isi storage/ DIABAIKAN oleh file .gitignore milik Laravel sendiri yang ada
+# di dalam tiap subfolder:
+#
+#   storage/app/.gitignore            storage/framework/cache/.gitignore
+#   storage/app/private/.gitignore    storage/framework/cache/data/.gitignore
+#   storage/app/public/.gitignore     storage/framework/sessions/.gitignore
+#   storage/framework/.gitignore      storage/framework/testing/.gitignore
+#                                   storage/framework/views/.gitignore
+#                                   storage/logs/.gitignore
+#
+# Tujuh file kecil itu sendiri WAJIK ikut ter-commit - itulah yang membuat
+# foldernya ikut ter-commit tanpa isinya ikut terbawa. Karena itu JANGAN
+# pernah menulis aturan seperti `/storage/framework/sessions/*` di sini:
+# aturan seperti itu juga ikut mengabaikan .gitignore di dalamnya, sehingga
+# foldernya ikut hilang dari repository dan Docker build kehilangan
+# struktur yang dibutuhkan.
+#
+# Yang di sini hanya tambahan untuk hal yang tidak ditutup .gitignore itu.
+/storage/*.key
+/storage/pail
+
+# --- Cache dan artefak tool lokal ------------------------------------------
+/.phpunit.result.cache
+/.phpunit.cache
+/.phpactor.json
+/.fleet
+/auth.json
+
+# --- Editor dan sistem operasi ---------------------------------------------
+/.idea
+/.nova
+/.vscode
+/.zed
+*.log
+.DS_Store
+Thumbs.db
+Homestead.json
+Homestead.yaml

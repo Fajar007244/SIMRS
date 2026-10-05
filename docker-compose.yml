@@ -1,0 +1,82 @@
+# ===========================================================================
+#  docker-compose.yml  -  LOCAL stack backed by SQLite (the default dev path)
+#
+#  Differences from docker-compose.pgsql.yml:
+#    - uses the stock php:8.2-fpm image, NOT this project's Dockerfile
+#    - the database is a SQLite file bind-mounted from the host, so data
+#      survives `down` + `up`
+#    - there is no database service at all
+#
+#  Use this file for ordinary development. Use docker-compose.pgsql.yml when
+#  you want to exercise the code that will actually run in production
+#  (PostgreSQL), especially for JSONB columns, indexing, and row-level locks.
+#
+#  Run from the backend/ directory:
+#      docker compose up -d
+#      docker compose exec app php artisan migrate
+#      docker compose exec app php artisan db:seed
+#      docker compose exec vite npm run dev     # separate terminal, if needed
+#      open http://localhost:8000
+#      docker compose down
+#
+#  NOTE: the stock php:8.2-fpm image has no nginx, so this file uses
+#  `php artisan serve` inside the container. That is fine for development
+#  (a single developer does not care that it is single-threaded) but it must
+#  NEVER be used in production.
+# ===========================================================================
+
+services:
+  app:
+    image: php:8.2-fpm
+    container_name: simrs-app
+    working_dir: /var/www/html
+    ports:
+      - "8000:8000"
+    environment:
+      APP_NAME: "SIMRS RSP Rotinsulu"
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      LOG_CHANNEL: stack
+      LOG_LEVEL: debug
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /var/www/html/database/database.sqlite
+      SESSION_DRIVER: file
+      CACHE_STORE: file
+      QUEUE_CONNECTION: sync
+      BROADCAST_CONNECTION: log
+      FILESYSTEM_DISK: local
+    volumes:
+      # Bind-mount the whole project so host edits are visible immediately.
+      # node_modules is deliberately NOT part of this mount: it holds native
+      # binaries that must be installed INSIDE the linux container.
+      - .:/var/www/html
+      # Named volumes shadow the bind mount for the three generated trees.
+      - node_modules:/var/www/html/node_modules
+      - vendor:/var/www/html/vendor
+      - public_build:/var/www/html/public/build
+    command: >
+      sh -c "mkdir -p /var/www/html/database &&
+             touch /var/www/html/database/database.sqlite &&
+             docker-php-ext-install -j$(nproc) pdo_sqlite pdo_mbstring >/dev/null 2>&1;
+             php artisan serve --host=0.0.0.0 --port=8000"
+
+  # Vite dev server (HMR). Port 5173 is published so the browser on the host
+  # can reach it. Not a production path.
+  vite:
+    image: node:22-alpine
+    container_name: simrs-vite
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_APP_NAME: "SIMRS RSP Rotinsulu"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    command: sh -c "apk add --no-cache libc6-compat && npm install && npm run dev -- --host 0.0.0.0"
+
+volumes:
+  node_modules:
+  vendor:
+  public_build:

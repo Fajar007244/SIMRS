@@ -1,0 +1,140 @@
+# ===========================================================================
+#  docker-compose.pgsql.yml  -  LOCAL stack backed by PostgreSQL (prod parity)
+#
+#  This is the compose file that matters for deploy confidence. It builds the
+#  app from the SAME Dockerfile that Railway uses, so you get byte-for-byte the
+#  same PHP extensions, the same nginx config, the same entrypoint, and the same
+#  Vite build that will run in production.
+#
+#  Run from the backend/ directory:
+#      docker compose -f docker-compose.pgsql.yml up -d --build
+#      docker compose -f docker-compose.pgsql.yml run --rm app php artisan migrate --force
+#      docker compose -f docker-compose.pgsql.yml run --rm app php artisan db:seed --force
+#      docker compose -f docker-compose.pgsql.yml exec app php artisan migrate:status
+#      http://localhost:8080
+#      docker compose -f docker-compose.pgsql.yml down          # keep the data
+#      docker compose -f docker-compose.pgsql.yml down -v       # DESTROY the data
+#
+#  Credentials below are LOCAL-ONLY throwaway values. They are committed on
+#  purpose so the file works out of the box; they are NOT production
+#  credentials and must never be reused on Railway.
+# ===========================================================================
+
+name: simrs-ews-pgsql
+
+services:
+  # --------------------------------------------------------------------------
+  # PostgreSQL 16. Pinned tag: `postgres:16-alpine` always means the same
+  # minor version, so a `pull` never changes your schema behaviour.
+  # --------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: simrs-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: simrs_ews
+      POSTGRES_USER: simrs
+      POSTGRES_PASSWORD: simrs_local_password
+      # Speeds up initdb noticeably and keeps collation predictable.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready is the correct readiness probe: it returns 0 only once the
+      # server accepts connections AND runs `SELECT 1`. A TCP port check would
+      # pass while Postgres is still in crash-recovery.
+      test: ["CMD-SHELL", "pg_isready -U simrs -d simrs_ews"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # --------------------------------------------------------------------------
+  # The app, built from the production Dockerfile.
+  # --------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: simrs-ews:local-pgsql
+    container_name: simrs-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        # Wait for pg_isready, not merely for the container to exist. Without
+        # this you get "SQLSTATE[08006] could not translate host name" on the
+        # first request while Postgres is still booting.
+        condition: service_healthy
+    ports:
+      # nginx inside the image listens on 8080 (see docker/nginx.conf).
+      - "8080:8080"
+    environment:
+      APP_NAME: "SIMRS RSP Rotinsulu"
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8080
+      APP_KEY: base64:+8p0O0cEQ+S62agWjvivcxip1tnYPZzuE9+JhGPDcw4=
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: debug
+      DB_CONNECTION: pgsql
+      # The DATABASE_URL form. This exercises the same code path Railway uses
+      # (config/database.php reads DATABASE_URL and parses it), which is the
+      # whole point of this file. To use discrete variables instead, delete
+      # DATABASE_URL and uncomment the DB_HOST block below.
+      DATABASE_URL: postgresql://simrs:simrs_local_password@db:5432/simrs_ews
+      # DB_HOST: db
+      # DB_PORT: 5432
+      # DB_DATABASE: simrs_ews
+      # DB_USERNAME: simrs
+      # DB_PASSWORD: simrs_local_password
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: sync
+      BROADCAST_CONNECTION: log
+      FILESYSTEM_DISK: local
+      # Local runs want migrations applied automatically; production ships
+      # with RUN_MIGRATIONS=false and migrates explicitly.
+      RUN_MIGRATIONS: "true"
+      SEED_DEMO_DATA: "false"
+      CACHE_CONFIG: "true"
+      CACHE_ROUTES: "true"
+      CACHE_VIEWS: "true"
+      DB_WAIT_SECONDS: "60"
+      DB_WAIT_INTERVAL: "2"
+    # Storage and the compiled config cache are the only paths Laravel writes to.
+    # Keeping them in a named volume means `down` + `up` does not force a full
+    # re-cache, and it proves the permissions the entrypoint sets are enough.
+    volumes:
+      - app_storage:/var/www/html/storage
+      - app_bootstrap_cache:/var/www/html/bootstrap/cache
+      # host-builds:/var/www/html/public/build
+      # ^ Uncomment ONLY to compare a host `npm run build` against the
+      #   in-image one. Off by default so you always test the in-image build,
+      #   which is what Railway actually serves.
+
+  # --------------------------------------------------------------------------
+  # Optional helper: psql on the host without installing PostgreSQL.
+  #   docker compose -f docker-compose.pgsql.yml exec db psql -U simrs -d simrs_ews
+  # --------------------------------------------------------------------------
+  db-shell:
+    image: postgres:16-alpine
+    container_name: simrs-pg-shell
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: simrs_local_password
+    entrypoint: ["psql", "-h", "db", "-U", "simrs", "-d", "simrs_ews"]
+    stdin_open: true
+    tty: true
+
+volumes:
+  # Named volume, not a bind mount. A bind mount of PGDATA on Windows/macOS runs
+  # into filesystem-permission and fsync problems; the named volume stays
+  # inside the Linux VM that Docker manages.
+  pgdata:
+  app_storage:
+  app_bootstrap_cache:
