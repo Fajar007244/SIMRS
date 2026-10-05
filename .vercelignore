@@ -1,0 +1,59 @@
+# ===========================================================================
+#  .vercelignore  -  berkas mana yang TIDAK ikut ter-upload ke Vercel
+#
+#  README FAQ 4 dari vercel-community/php menyatakan composer install berjalan
+#  di build step Vercel memakai PHP bawaan runtime, sehingga /vendor tidak
+#  perlu dikirim dan SEBAIKNYA tidak dikirim (menghemat ukuran upload).
+#  File /vendor hasil build itulah yang dipakai saat request.
+#  Lihat juga FAQ 7: script composer bernama "vercel" bisa memanggil
+#  npm/node di build step.
+#
+#  Dependensi frontend punya aturan sendiri: /node_modules di bawah TIDAK ikut
+#  di-upload karena "buildCommand" di vercel.json yang memasangnya ulang
+#  (npm ci) lalu menjalankan vite build di build step Vercel.
+# ===========================================================================
+
+# --- Dependency: dipasang ulang di Vercel saat build ----------------------
+/vendor
+/node_modules
+
+# --- Metadata repository --------------------------------------------------
+/.git
+/.gitattributes
+/.gitignore
+
+# --- Rahasia: TIDAK PERNAH di-upload ---------------------------------------
+#  Seluruh secret (APP_KEY, DATABASE_URL) ada di Environment Variables Vercel.
+#  Kalau .env ikut ter-upload, isinya bocor ke dalam deployment.
+/.env
+/.env.local
+/.env.*.local
+/.env.production
+
+# --- Sisa pekerjaan lokal -------------------------------------------------
+/.phpunit.result.cache
+/storage/logs
+/database/*.sqlite
+/database/*.sqlite-journal
+
+# ===========================================================================
+#  YANG SENGAJA TIDAK DI-IGNORE
+#  ---------------------------------------------------------------------------
+#  public/build  ->  WAJIB ikut ter-upload. Isi build Vite inilah yang dibaca
+#                    @vite lewat manifest, jadi halaman tanpa CSS kalau hilang.
+#                    Folder ini SENGAJA tidak masuk .gitignore: Vercel yang
+#                    membuild-nya sendiri lewat "buildCommand" di vercel.json
+#                    (npm ci && npm run build). Kamu tidak perlu menjalankan
+#                    `npm run build` manual sebelum deploy, dan hash aset
+#                    tidak mungkin basi karena selalu hasil build yang sama
+#                    dengan source yang sedang di-deploy.
+#                    Kalau public/build TIDAK ada di dalam bundle, itu berarti
+#                    buildCommand gagal (bukan kamu lupa build di lokal) -
+#                    buildCommand sudah mengecek manifest.json dan menggagalkan
+#                    build dengan pesan yang menyebut ViteManifestNotFound.
+#  public/favicon.ico dan public/robots.txt -> dilayani api/index.php.
+#  storage/framework/views -> hanya berisi .gitignore; view hasil compile
+#                    ditulis ke /tmp (VIEW_COMPILED_PATH), bukan ke sini.
+#  tests/, docs/, docker/, scripts/ -> tidak dibuild, tapi ukurannya kecil
+#                    dan berguna kalau perlu dibaca dari build log.
+# ===========================================================================
