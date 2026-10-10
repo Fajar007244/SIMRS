@@ -100,3 +100,15 @@
 Thumbs.db
 Homestead.json
 Homestead.yaml
+
+# --- Vercel ---------------------------------------------------------------
+# `vercel link` dan `vercel build` membuat `.vercel/`: `project.json`, cache
+# builder (`node_modules/` untuk `vercel-php`), dan `.env.local`. Semuanya milik
+# mesin ini, bukan bagian repository.
+#
+# JANGAN memakai pola `.env*` di sini. Pola telanjang itu kembali meng-ignore
+# `.env.example` dan `.env.production.example`, padahal dua berkas itu wajib
+# ikut ter-commit (lihat aturan `!.env.example` di atas). Aturan `/.env` dan
+# `/.env.*` di atas sudah menutup semua berkas `.env` milik mesin lokal.
+/.vercel
+

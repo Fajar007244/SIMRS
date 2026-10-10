@@ -9,8 +9,18 @@
 #  npm/node di build step.
 #
 #  Dependensi frontend punya aturan sendiri: /node_modules di bawah TIDAK ikut
-#  di-upload karena "buildCommand" di vercel.json yang memasangnya ulang
-#  (npm ci) lalu menjalankan vite build di build step Vercel.
+#  di-upload karena runtime PHP yang memasangnya ulang (npm ci) lalu menjalankan
+#  vite build di build step Vercel.
+#  ---------------------------------------------------------------------------
+#  CARA MEMBANGUN ASET: vercel.json memakai "builds", jadi hanya ada SATU
+#  builder (vercel-php) dan tidak ada builder frontend sama sekali. Runtime itu
+#  menjalankan "composer install" lalu "composer run vercel" (lihat composer.json
+#  scripts.vercel), dan script itulah yang menjalankan npm ci + vite build.
+#  Hasilnya masuk ke public/build DI DALAM folder kerja runtime, lalu ikut
+#  ter-GLOB ke dalam function - bukan karena di-upload dari sini.
+#  Jangan menaruh "buildCommand" atau "outputDirectory" di vercel.json: keduanya
+#  akan mengaktifkan @vercel/static-build, yang mensyaratkan folder "dist" dan
+#  menggagalkan deploy dengan "No Output Directory named \"dist\" found".
 # ===========================================================================
 
 # --- Dependency: dipasang ulang di Vercel saat build ----------------------
@@ -39,17 +49,16 @@
 # ===========================================================================
 #  YANG SENGAJA TIDAK DI-IGNORE
 #  ---------------------------------------------------------------------------
-#  public/build  ->  WAJIB ikut ter-upload. Isi build Vite inilah yang dibaca
-#                    @vite lewat manifest, jadi halaman tanpa CSS kalau hilang.
-#                    Folder ini SENGAJA tidak masuk .gitignore: Vercel yang
-#                    membuild-nya sendiri lewat "buildCommand" di vercel.json
-#                    (npm ci && npm run build). Kamu tidak perlu menjalankan
-#                    `npm run build` manual sebelum deploy, dan hash aset
-#                    tidak mungkin basi karena selalu hasil build yang sama
-#                    dengan source yang sedang di-deploy.
-#                    Kalau public/build TIDAK ada di dalam bundle, itu berarti
-#                    buildCommand gagal (bukan kamu lupa build di lokal) -
-#                    buildCommand sudah mengecek manifest.json dan menggagalkan
+#  public/build  ->  SENGAJA tidak ikut ter-upload. Folder ini masih ada di
+#                    .gitignore, dan itu benar: yang menghasilkannya di Vercel
+#                    adalah "composer run vercel" (npm ci + vite build + cek
+#                    manifest), bukan isi folder lokal.
+#                    Kalau public/build ikut ter-upload justru BERBAHAYA: Vite
+#                    menimpa folder itu setiap build, dan hash aset bisa basi
+#                    bila yang terkirim tidak sama dengan source yang dideploy.
+#                    Kalau public/build TIDAK ada di dalam function, itu berarti
+#                    composer run vercel gagal (bukan kamu lupa build di lokal) -
+#                    script itu sudah mengecek manifest.json dan menggagalkan
 #                    build dengan pesan yang menyebut ViteManifestNotFound.
 #  public/favicon.ico dan public/robots.txt -> dilayani api/index.php.
 #  storage/framework/views -> hanya berisi .gitignore; view hasil compile

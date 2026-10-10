@@ -1,15 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
 
-  "buildCommand": "npm ci && npm run build && node scripts/vercel-assert-vite-manifest.mjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": "public",
 
-  "functions": {
-    "api/index.php": {
-      "runtime": "vercel-php@0.7.4",
-      "memory": 1024,
-      "maxDuration": 60
-    }
-  },
+  "builds": [
+    { "src": "api/index.php", "use": "vercel-php@0.7.4" }
+  ],
 
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/index.php" }
