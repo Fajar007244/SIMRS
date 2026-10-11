@@ -728,6 +728,50 @@ keluar dari sana.
 Itu **normal** di Hobby: function yang menganggur akan mati lalu harus start
 lagi. Buka aplikasinya beberapa menit sebelum demo.
 
+### 9.11 "The information you're about to submit is not secure" saat login/logout
+
+**Gejala:** setiap kali menekan tombol Masuk atau Keluar, Chrome/Firefox
+memunculkan peringatan form tidak aman. Halamannya sendiri tetap `https://`.
+
+**Penyebab:** Vercel Streamyard sudah menyelesaikan TLS di ujung depan, lalu
+meneruskan request sebagai HTTP biasa ke function PHP di belakangnya. Skema
+aslinya hanya ada di header `X-Forwarded-Proto: https`. Laravel mengabaikan
+header itu selama proxy-nya tidak dipercaya, sehingga `Request::isSecure()`
+bernilai `false` dan `route()` merender URL dengan skema `http://`:
+
+```html
+<form action="http://simrs-ews-app.vercel.app/login" method="POST">
+```
+
+Browser membaca `http://` di halaman `https://` sebagai submit lintas
+skema dan memunculkan peringatan tersebut. Tombol Keluar di
+`resources/views/partials/topnav.blade.php` punya masalah yang sama.
+
+**Perbaikan:** sudah ditangani di `bootstrap/app.php`:
+
+```php
+$middleware->trustProxies(at: '*');
+```
+
+`'*'` bukan berarti percaya semua orang. Laravel hanya memercayai
+`REMOTE_ADDR`, yaitu proxy yang benar-benar menghubungi aplikasinya, bukan
+seluruh rantai `X-Forwarded-For` milik klien.
+
+**Kalau masih muncul setelah deploy:**
+
+1. Hard refresh (Ctrl+Shift+R). Halaman login yang sudah ada di cache
+   browser masih membawa `action="http://..."` versi lama.
+2. Buka **View Source**, bukan DevTools. Cari `action="` pada `<form>`.
+   Kalau masih `http://`, build deploy-nya belum memuat `bootstrap/app.php`
+   terbaru - redeploy dari dashboard Vercel.
+3. Pastikan `APP_URL` di dashboard diawali `https://` dan tanpa garis miring
+   di akhir.
+
+Ada test penjaga untuk ini di `tests/Feature/AuthenticationTest.php`
+(nama test-nya diawali `..._behind_a_tls_terminating_proxy`). Jalankan
+`php artisan test --filter=AuthenticationTest` setelah menyentuh
+`bootstrap/app.php`.
+
 ---
 
 ## 10. Cara kembali ke Docker / Render

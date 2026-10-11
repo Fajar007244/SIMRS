@@ -15,6 +15,25 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // --- Percayai proxy di depan aplikasi -----------------------------
+        // Semua jalur deploy (Vercel, Railway, Render, nginx) menyajikan
+        // HTTPS di ujung depan lalu meneruskan HTTP ke PHP di belakang. Header
+        // `X-Forwarded-Proto: https` yang dikirim proxy itu diabaikan Laravel
+        // bila proxy tidak dipercaya, sehingga Request::isSecure() false.
+        //
+        // Akibatnya route() membangun URL dengan skema http://, termasuk
+        // `action` pada form login dan logout:
+        //     <form action="http://domain.simu/login" ...>
+        // Browser membacanya sebagai submit lintas skema dan menampilkan
+        // "The information you're about to submit is not secure". Form logout
+        // di topnav.blade.php punya masalah yang sama.
+        //
+        // '*' di sini aman: Laravel hanya percaya REMOTE_ADDR (proxy yang
+        // langsung menghubungi kita), bukan seluruh rantai X-Forwarded-For.
+        // Artinya klien yang memalsukan header tidak bisa memengaruhi
+        // skema/host yang dipakai aplikasi.
+        $middleware->trustProxies(at: '*');
+
         $middleware->web(append: [
             HandleInertiaRequests::class,
         ]);

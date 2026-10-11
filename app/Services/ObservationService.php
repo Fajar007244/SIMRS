@@ -336,71 +336,79 @@ class ObservationService
         $existing = $this->findSlot($encounter, $date, $time);
         $created = $existing === null;
 
-        $saved = DB::transaction(function () use ($encounter, $data, $user, $date, $time, $existing, $sys, $dia, $map, $hr, $rr, $spo2, $suhu, $kesadaran, $gcs, $intake, $output, $scoring, $ventilator, $weight, $gcsText, $rass, $bpMethod, $glucose, $respiratoryProblem, $transfusionType, $transfusionVolume, $parenteral, $enteral, $urine, $drain, $iwl, $nursingAction) {
-            $attributes = [
-                'sys' => $sys,
-                'dia' => $dia,
-                'map' => $map,
-                'hr' => $hr,
-                'rhythm' => $this->nullableText($this->pick($data, 'rhythm')),
-                'rr' => $rr,
-                'breath_type' => $this->nullableText($this->pick($data, 'breathType', 'breath_type')),
-                'suhu' => $suhu,
-                'spo2' => $spo2,
-                'o2_support' => $this->nullableText($this->pick($data, 'o2Support', 'o2_support')),
-                'kesadaran' => $kesadaran->value,
-                'gcs' => $gcs,
-                'gcs_text' => $gcsText,
-                'rass' => $rass,
-                'weight_kg' => $weight,
-                'bp_method' => $bpMethod,
-                'blood_glucose' => $glucose,
-                'respiratory_problem' => $respiratoryProblem,
-                'intake' => $intake,
-                'output' => $output,
-                'transfusion_type' => $transfusionType,
-                'transfusion_volume' => $transfusionVolume,
-                'parenteral_volume' => $parenteral,
-                'enteral_volume' => $enteral,
-                'urine_volume' => $urine,
-                'drain_volume' => $drain,
-                'iwl_volume' => $iwl,
-                'nursing_action' => $nursingAction,
-                'ews_total' => $scoring['total'],
-                'ews_scores' => $scoring['scores'],
-                'ews_risk' => $scoring['risk'],
-                'notes' => $this->nullableText($this->pick($data, 'notes')),
-                'ventilator_settings' => $ventilator === [] ? null : $ventilator,
-                'status' => $this->nullableText($this->pick($data, 'status')) ?? 'final',
-                'recorded_by' => $this->nullableText($this->pick($data, 'recordedBy', 'recorded_by')) ?? $user->name,
-                'recorded_at' => now(),
-                'idempotency_key' => $encounter->encounter_id.':'.$date.':'.$time,
-            ];
+        DB::beginTransaction();
+        try {
+            $saved = DB::transaction(function () use ($encounter, $data, $user, $date, $time, $existing, $sys, $dia, $map, $hr, $rr, $spo2, $suhu, $kesadaran, $gcs, $intake, $output, $scoring, $ventilator, $weight, $gcsText, $rass, $bpMethod, $glucose, $respiratoryProblem, $transfusionType, $transfusionVolume, $parenteral, $enteral, $urine, $drain, $iwl, $nursingAction) {
+                $attributes = [
+                    'sys' => $sys,
+                    'dia' => $dia,
+                    'map' => $map,
+                    'hr' => $hr,
+                    'rhythm' => $this->nullableText($this->pick($data, 'rhythm')),
+                    'rr' => $rr,
+                    'breath_type' => $this->nullableText($this->pick($data, 'breathType', 'breath_type')),
+                    'suhu' => $suhu,
+                    'spo2' => $spo2,
+                    'o2_support' => $this->nullableText($this->pick($data, 'o2Support', 'o2_support')),
+                    'kesadaran' => $kesadaran->value,
+                    'gcs' => $gcs,
+                    'gcs_text' => $gcsText,
+                    'rass' => $rass,
+                    'weight_kg' => $weight,
+                    'bp_method' => $bpMethod,
+                    'blood_glucose' => $glucose,
+                    'respiratory_problem' => $respiratoryProblem,
+                    'intake' => $intake,
+                    'output' => $output,
+                    'transfusion_type' => $transfusionType,
+                    'transfusion_volume' => $transfusionVolume,
+                    'parenteral_volume' => $parenteral,
+                    'enteral_volume' => $enteral,
+                    'urine_volume' => $urine,
+                    'drain_volume' => $drain,
+                    'iwl_volume' => $iwl,
+                    'nursing_action' => $nursingAction,
+                    'ews_total' => $scoring['total'],
+                    'ews_scores' => $scoring['scores'],
+                    'ews_risk' => $scoring['risk'],
+                    'notes' => $this->nullableText($this->pick($data, 'notes')),
+                    'ventilator_settings' => $ventilator === [] ? null : $ventilator,
+                    'status' => $this->nullableText($this->pick($data, 'status')) ?? 'final',
+                    'recorded_by' => $this->nullableText($this->pick($data, 'recordedBy', 'recorded_by')) ?? $user->name,
+                    'recorded_at' => now(),
+                    'idempotency_key' => $encounter->encounter_id.':'.$date.':'.$time,
+                ];
 
-            if ($existing === null) {
-                $observation = Observation::query()->create($attributes + [
-                    'encounter_id' => $encounter->getKey(),
-                    'observation_date' => $date,
-                    'observation_time' => $time,
-                ]);
-            } else {
-                $observation = $existing;
-                $observation->forceFill($attributes)->save();
-            }
+                if ($existing === null) {
+                    $observation = Observation::query()->create($attributes + [
+                        'encounter_id' => $encounter->getKey(),
+                        'observation_date' => $date,
+                        'observation_time' => $time,
+                    ]);
+                } else {
+                    $observation = $existing;
+                    $observation->forceFill($attributes)->save();
+                }
 
-            $this->syncMedications($observation, $data);
-            $this->syncBundleAnswers($observation, $data);
-            $this->syncDevices($encounter, $date, $data);
+                $this->syncMedications($observation, $data);
+                $this->syncBundleAnswers($observation, $data);
+                $this->syncDevices($encounter, $date, $data);
 
-            $stamp = $date.' '.$time.':00';
-            $current = $encounter->latest_observation_at;
+                $stamp = $date.' '.$time.':00';
+                $current = $encounter->latest_observation_at;
 
-            if (! $current instanceof Carbon || $stamp > $current->format('Y-m-d H:i:s')) {
-                $encounter->forceFill(['latest_observation_at' => $stamp])->save();
-            }
+                if (! $current instanceof Carbon || $stamp > $current->format('Y-m-d H:i:s')) {
+                    $encounter->forceFill(['latest_observation_at' => $stamp])->save();
+                }
 
-            return $observation;
-        });
+                return $observation;
+            });
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
 
         return [
             'observation' => $this->rowFrom($saved->fresh(), collect(), collect()),

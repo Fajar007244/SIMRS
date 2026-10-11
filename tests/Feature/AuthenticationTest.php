@@ -184,4 +184,66 @@ class AuthenticationTest extends TestCase
                 ->where('auth.user.role', 'dokter')
             );
     }
+
+    /**
+     * Header yang dikirim bridge Vercel ke runtime PHP di belakangnya. PHP
+     * tidak pernah melihat koneksi TLS secara langsung, jadi `X-Forwarded-*`
+     * adalah satu-satunya bukti skema aslinya.
+     *
+     * @return array<string, mixed>
+     */
+    private static function vercelProxyServer(): array
+    {
+        return [
+            'REMOTE_ADDR' => '76.76.21.21',
+            'HTTP_X_FORWARDED_PROTO' => 'https',
+            'HTTP_X_FORWARDED_HOST' => 'simrs.example.test',
+            'HTTP_X_FORWARDED_PORT' => '443',
+            'HTTP_X_FORWARDED_FOR' => '203.0.113.7',
+            'HTTPS' => '',
+        ];
+    }
+
+    public function test_login_form_posts_over_https_behind_a_tls_terminating_proxy(): void
+    {
+        // Tanpa trustProxies, action form dirender sebagai http:// dan browser
+        // menampilkan "The information you're about to submit is not secure".
+        $html = $this->withServerVariables(self::vercelProxyServer())
+            ->get('/login')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('action="https://simrs.example.test/login"', $html);
+        $this->assertStringNotContainsString('action="http://', $html);
+    }
+
+    public function test_logout_form_posts_over_https_behind_a_tls_terminating_proxy(): void
+    {
+        $html = $this->actingAs(User::where('username', 'dokter')->firstOrFail())
+            ->withServerVariables(self::vercelProxyServer())
+            ->get('/pasien')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('action="https://simrs.example.test/logout"', $html);
+        $this->assertStringNotContainsString('action="http://', $html);
+    }
+
+    public function test_login_redirect_uses_the_forwarded_https_scheme(): void
+    {
+        $this->withServerVariables(self::vercelProxyServer())
+            ->post('/login', ['username' => 'dokter', 'password' => 'dokter123'])
+            ->assertRedirect('https://simrs.example.test/pasien');
+    }
+
+    public function test_a_plain_http_request_without_proxy_headers_keeps_http(): void
+    {
+        // Penjaga agar perbaikan ini tidak memakai pemaksaan skema global:
+        // pengembangan lokal via `php artisan serve` harus tetap http://.
+        $html = $this->get('http://127.0.0.1/login')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('action="http://127.0.0.1/login"', $html);
+    }
 }
