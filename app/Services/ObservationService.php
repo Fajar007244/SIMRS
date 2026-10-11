@@ -14,6 +14,7 @@ use App\Models\ObservationMedication;
 use App\Models\User;
 use App\Services\Support\ClinicalFormat;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -333,88 +334,125 @@ class ObservationService
             $ventilator['rass'] = (string) $rass;
         }
 
-        $existing = $this->findSlot($encounter, $date, $time);
-        $created = $existing === null;
+        // --- SIMPAN SLOT, DENGAN RETRY KALAU SLOTNYA DIREBUT REQUEST LAIN ----
+        //
+        // `findSlot()` adalah SELECT biasa tanpa lock, jadi dua request yang
+        // tiba bersamaan untuk slot jam yang sama bisa sama-sama membaca
+        // "kosong" lalu sama-sama INSERT. Yang kalah menabrak unique constraint
+        // `observations_slot_unique` (SQLSTATE 23505).
+        //
+        // Di PostgreSQL satu statement yang gagal membatalkan SELURUH transaksi,
+        // sehingga statement berikutnya ikut gagal dengan 25P02 "current
+        // transaction is aborted". Gejalanya sangat menyesatkan karena yang
+        // dilaporkan adalah statement paling bawah, yaitu DELETE
+        // observation_medications di syncMedications() - padahal INSERT
+        // observasi itulah yang sebenarnya ditolak.
+        //
+        // Karena itu transaksi di bawah memakai DB::transaction() polos, tanpa
+        // beginTransaction/commit manual yang bersarang, dan percobaan ulang
+        // dilakukan DI LUAR transaksi yang sudah dibatalkan - PostgreSQL tidak
+        // mengizinkan melanjutkan transaksi yang gagal. Pada percobaan ulang,
+        // request yang menang sudah commit, jadi findSlot() menemukan baris itu
+        // dan jalur UPDATE yang dipakai: "simpan atau timpa", persis desain
+        // upsert yang dijelaskan di migration create_observations_table.
+        for ($attempt = 1; ; $attempt++) {
+            $existing = $this->findSlot($encounter, $date, $time);
+            $created = $existing === null;
 
-        DB::beginTransaction();
-        try {
-            $saved = DB::transaction(function () use ($encounter, $data, $user, $date, $time, $existing, $sys, $dia, $map, $hr, $rr, $spo2, $suhu, $kesadaran, $gcs, $intake, $output, $scoring, $ventilator, $weight, $gcsText, $rass, $bpMethod, $glucose, $respiratoryProblem, $transfusionType, $transfusionVolume, $parenteral, $enteral, $urine, $drain, $iwl, $nursingAction) {
+            try {
+                $saved = DB::transaction(function () use ($encounter, $data, $user, $date, $time, $existing, $sys, $dia, $map, $hr, $rr, $spo2, $suhu, $kesadaran, $gcs, $intake, $output, $scoring, $ventilator, $weight, $gcsText, $rass, $bpMethod, $glucose, $respiratoryProblem, $transfusionType, $transfusionVolume, $parenteral, $enteral, $urine, $drain, $iwl, $nursingAction) {
                 $attributes = [
-                    'sys' => $sys,
-                    'dia' => $dia,
-                    'map' => $map,
-                    'hr' => $hr,
-                    'rhythm' => $this->nullableText($this->pick($data, 'rhythm')),
-                    'rr' => $rr,
-                    'breath_type' => $this->nullableText($this->pick($data, 'breathType', 'breath_type')),
-                    'suhu' => $suhu,
-                    'spo2' => $spo2,
-                    'o2_support' => $this->nullableText($this->pick($data, 'o2Support', 'o2_support')),
-                    'kesadaran' => $kesadaran->value,
-                    'gcs' => $gcs,
-                    'gcs_text' => $gcsText,
-                    'rass' => $rass,
-                    'weight_kg' => $weight,
-                    'bp_method' => $bpMethod,
-                    'blood_glucose' => $glucose,
-                    'respiratory_problem' => $respiratoryProblem,
-                    'intake' => $intake,
-                    'output' => $output,
-                    'transfusion_type' => $transfusionType,
-                    'transfusion_volume' => $transfusionVolume,
-                    'parenteral_volume' => $parenteral,
-                    'enteral_volume' => $enteral,
-                    'urine_volume' => $urine,
-                    'drain_volume' => $drain,
-                    'iwl_volume' => $iwl,
-                    'nursing_action' => $nursingAction,
-                    'ews_total' => $scoring['total'],
-                    'ews_scores' => $scoring['scores'],
-                    'ews_risk' => $scoring['risk'],
-                    'notes' => $this->nullableText($this->pick($data, 'notes')),
-                    'ventilator_settings' => $ventilator === [] ? null : $ventilator,
-                    'status' => $this->nullableText($this->pick($data, 'status')) ?? 'final',
-                    'recorded_by' => $this->nullableText($this->pick($data, 'recordedBy', 'recorded_by')) ?? $user->name,
-                    'recorded_at' => now(),
-                    'idempotency_key' => $encounter->encounter_id.':'.$date.':'.$time,
-                ];
+                        'sys' => $sys,
+                        'dia' => $dia,
+                        'map' => $map,
+                        'hr' => $hr,
+                        'rhythm' => $this->nullableText($this->pick($data, 'rhythm')),
+                        'rr' => $rr,
+                        'breath_type' => $this->nullableText($this->pick($data, 'breathType', 'breath_type')),
+                        'suhu' => $suhu,
+                        'spo2' => $spo2,
+                        'o2_support' => $this->nullableText($this->pick($data, 'o2Support', 'o2_support')),
+                        'kesadaran' => $kesadaran->value,
+                        'gcs' => $gcs,
+                        'gcs_text' => $gcsText,
+                        'rass' => $rass,
+                        'weight_kg' => $weight,
+                        'bp_method' => $bpMethod,
+                        'blood_glucose' => $glucose,
+                        'respiratory_problem' => $respiratoryProblem,
+                        'intake' => $intake,
+                        'output' => $output,
+                        'transfusion_type' => $transfusionType,
+                        'transfusion_volume' => $transfusionVolume,
+                        'parenteral_volume' => $parenteral,
+                        'enteral_volume' => $enteral,
+                        'urine_volume' => $urine,
+                        'drain_volume' => $drain,
+                        'iwl_volume' => $iwl,
+                        'nursing_action' => $nursingAction,
+                        'ews_total' => $scoring['total'],
+                        'ews_scores' => $scoring['scores'],
+                        'ews_risk' => $scoring['risk'],
+                        'notes' => $this->nullableText($this->pick($data, 'notes')),
+                        'ventilator_settings' => $ventilator === [] ? null : $ventilator,
+                        'status' => $this->nullableText($this->pick($data, 'status')) ?? 'final',
+                        'recorded_by' => $this->nullableText($this->pick($data, 'recordedBy', 'recorded_by')) ?? $user->name,
+                        'recorded_at' => now(),
+                        'idempotency_key' => $encounter->encounter_id.':'.$date.':'.$time,
+                    ];
 
-                if ($existing === null) {
-                    $observation = Observation::query()->create($attributes + [
-                        'encounter_id' => $encounter->getKey(),
-                        'observation_date' => $date,
-                        'observation_time' => $time,
-                    ]);
-                } else {
-                    $observation = $existing;
-                    $observation->forceFill($attributes)->save();
+                    if ($existing === null) {
+                        $observation = Observation::query()->create($attributes + [
+                            'encounter_id' => $encounter->getKey(),
+                            'observation_date' => $date,
+                            'observation_time' => $time,
+                        ]);
+                    } else {
+                        $observation = $existing;
+                        $observation->forceFill($attributes)->save();
+                    }
+
+                    $this->syncMedications($observation, $data);
+                    $this->syncBundleAnswers($observation, $data);
+                    $this->syncDevices($encounter, $date, $data);
+
+                    $stamp = $date.' '.$time.':00';
+                    $current = $encounter->latest_observation_at;
+
+                    if (! $current instanceof Carbon || $stamp > $current->format('Y-m-d H:i:s')) {
+                        $encounter->forceFill(['latest_observation_at' => $stamp])->save();
+                    }
+
+                    return $observation;
+                });
+
+            } catch (QueryException $e) {
+                // Balapan slot? Kalau request lain sudah commit baris untuk
+                // slot jam yang sama, INSERT kita pasti ditolak unique
+                // constraint observations_slot_unique. Transaksi di atas sudah
+                // di-rollback, jadi findSlot() di sini membaca kondisi SETELAH
+                // request lain commit: barisnya ada berarti ini balapan slot,
+                // tidak ada berarti penyebabnya lain dan harus dilempar apa
+                // adanya.
+                //
+                // Cara mendeteksinya sengaja TIDAK mem-parsing SQLSTATE 23505.
+                // SQLite (dipakai tes dan `php artisan serve` lokal) melapor
+                // dengan 23000 dan pesan yang berbeda, sehingga pencocokan
+                // string hanya akan cocok di produksi - persis di tempat yang
+                // paling tidak bisa diuji.
+                if ($attempt === 1 && $this->findSlot($encounter, $date, $time) !== null) {
+                    continue;
                 }
 
-                $this->syncMedications($observation, $data);
-                $this->syncBundleAnswers($observation, $data);
-                $this->syncDevices($encounter, $date, $data);
+                throw $e;
+            }
 
-                $stamp = $date.' '.$time.':00';
-                $current = $encounter->latest_observation_at;
-
-                if (! $current instanceof Carbon || $stamp > $current->format('Y-m-d H:i:s')) {
-                    $encounter->forceFill(['latest_observation_at' => $stamp])->save();
-                }
-
-                return $observation;
-            });
-
-            DB::commit();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
+            return [
+                'observation' => $this->rowFrom($saved->fresh(), collect(), collect()),
+                'created' => $created,
+                'duplicated' => ! $created,
+            ];
         }
-
-        return [
-            'observation' => $this->rowFrom($saved->fresh(), collect(), collect()),
-            'created' => $created,
-            'duplicated' => ! $created,
-        ];
     }
 
     /**

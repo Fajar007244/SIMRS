@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequireRole;
+use App\Support\DatabaseErrorReport;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -75,5 +76,29 @@ return Application::configure(basePath: dirname(__DIR__))
                 'status' => $status,
                 'message' => $message,
             ], $status);
+        });
+
+        // --- Diagnosa error database ke tabel `error_reports` ---------------
+        // SEMENTARA. Hapus blok ini beserta migration
+        // 2026_10_11_000001 setelah penyebab 25P02 ditemukan.
+        //
+        // Kenapa perlu: di Vercel, satu statement yang gagal membatalkan
+        // SELURUH transaksi PostgreSQL, sehingga statement berikutnya
+        // melaporkan 25P02 "current transaction is aborted" - menunjuk ke
+        // statement yang innocent, bukan ke penyebabnya. Halaman error
+        // Laravel tidak menampilkan rantai getPrevious(), dan LOG_CHANNEL
+        // di produksi adalah stderr (masuk Function Logs yang tidak selalu
+        // bisa diambil ulang). Satu-satunya tempat yang bertahan di Vercel
+        // Hobby adalah database, jadi detailnya ditulis ke sana.
+        // reportable() hanya menerima exception-nya. Request diambil dari
+        // container supaya kelas ini tidak ikut jadi parameter callback.
+        $exceptions->reportable(function (Throwable $e): void {
+            $request = app('request');
+
+            try {
+                DatabaseErrorReport::record($e, $request);
+            } catch (Throwable) {
+                // Alat diagnosa tidak boleh menjatuhkan aplikasi.
+            }
         });
     })->create();

@@ -9,6 +9,7 @@ use App\Models\ObservationBundleAnswer;
 use App\Models\ObservationMedication;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -436,5 +437,93 @@ class ObservationWriteTest extends TestCase
         return $this->actingAs($this->perawat())
             ->from('/encounters/'.$this->encounter->encounter_id.'/observasi')
             ->post('/encounters/'.$this->encounter->encounter_id.'/observasi', $payload);
+    }
+
+    /**
+     * Dua tab menyimpan slot jam yang sama pada saat bersamaan.
+     *
+     * `findSlot()` adalah SELECT tanpa lock, jadi keduanya bisa membaca
+     * "slot ini masih kosong" lalu sama-sama INSERT. Yang kalah menabrak
+     * unique constraint observations_slot_unique.
+     *
+     * Yang membuat error lama sangat menyesatkan: di PostgreSQL statement
+     * yang gagal itu membatalkan seluruh transaksi, sehingga statement
+     * berikutnya - DELETE observation_medications di syncMedications() - ikut
+     * gagal dengan 25P02 "current transaction is aborted". Error yang tampil
+     * menunjuk tabel obat, padahal INSERT observasi-lah yang ditolak.
+     *
+     * Balapan ini tidak bisa ditiru dengan dua request sungguhan di dalam
+     * satu proses PHPUnit, jadi request "lawan" disuntikkan lewat DB::listen:
+     * tepat setelah findSlot() membaca, baris pesaing planted dan COMMIT
+     * lebih dulu - persis urutan yang terjadi ketika dua tab nyata menekan
+     * tombol simpan hampir bersamaan.
+     */
+    public function test_two_tabs_saving_the_same_slot_do_not_crash_the_second_write(): void
+    {
+        $rival = false;
+
+        DB::listen(function ($query) use (&$rival) {
+            if ($rival || ! str_contains($query->sql, 'from "observations" where "encounter_id"')) {
+                return;
+            }
+
+            $rival = true;
+
+            Observation::query()->create([
+                'encounter_id' => $this->encounter->getKey(),
+                'observation_date' => '2026-09-07',
+                'observation_time' => '11:00',
+                'sys' => 100,
+                'dia' => 60,
+                'hr' => 90,
+                'rr' => 20,
+                'suhu' => 37,
+                'spo2' => 98,
+                'kesadaran' => 'Alert',
+                'ews_total' => 0,
+                'ews_risk' => 'low',
+                'notes' => 'Dari tab lain.',
+            ]);
+        });
+
+        $response = $this->postObservation($this->payload(['notes' => 'Dari tab ini.']));
+
+        $this->assertTrue($rival, 'Request lawan tidak pernah disuntik, tes ini tidak menguji apa pun.');
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+
+        // Hasil akhirnya harus "simpan atau timpa": SATU baris, berisi data
+        // dari request yang menang, bukan dua baris dan bukan 500.
+        $this->assertSame(1, Observation::query()->count());
+
+        $observation = Observation::query()->sole();
+        $this->assertSame('Dari tab ini.', $observation->notes);
+        $this->assertSame(88, $observation->sys);
+    }
+
+    /**
+     * Retry hanya boleh menyalakan diri untuk balapan slot: klausa `continue`
+     * dijalankan hanya kalau findSlot() - yang dipanggil SETELAH transaksi
+     * di-rollback - benar-benar menemukan baris slot itu. Kalau INSERT ditolak
+     * karena sebab lain, baris itu tidak ada, jadi error aslinya tetap
+     * dilempar apa adanya dan tidak ada percobaan ulang yang menutupinya.
+     *
+     * Sifat "tidak ada retry sia-sia" itu yang diuji di sini: simpanan biasa
+     * tidak boleh memanggil findSlot lebih dari sekali per percobaan.
+     */
+    public function test_a_normal_save_does_not_retry(): void
+    {
+        $findSlotReads = 0;
+
+        DB::listen(function ($query) use (&$findSlotReads) {
+            if (str_contains($query->sql, 'from "observations" where "encounter_id"')) {
+                $findSlotReads++;
+            }
+        });
+
+        $this->postObservation($this->payload())->assertSessionHasNoErrors();
+
+        $this->assertSame(1, $findSlotReads, 'Penyimpanan normal tidak boleh mengulang findSlot.');
+        $this->assertSame(1, Observation::query()->count());
     }
 }
