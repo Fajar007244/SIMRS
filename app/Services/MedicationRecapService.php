@@ -238,7 +238,9 @@ class MedicationRecapService
      */
     public function getCategoryDistribution(Encounter $encounter): array
     {
-        $totals = $this->administrationQuery($encounter)
+        // ordered = false: query ini di-GROUP BY kategori, jadi ORDER BY per baris
+        // dari administrationQuery() harus dilepas (lihat catatan di sana).
+        $totals = $this->administrationQuery($encounter, ordered: false)
             ->selectRaw('category, COUNT(*) as row_count, COALESCE(SUM(volume), 0) as total_volume')
             ->groupBy('category')
             ->get()
@@ -451,19 +453,31 @@ class MedicationRecapService
     /**
      * Kueri dasar: seluruh koreksi pemberian obat pada satu episode, dengan
      * relasi observasi ikut dimuat agar tidak terjadi N+1 saat membentuk baris.
-     * Urutan terbaru-di-atas mengikuti tabel farmasi pada phase1.
+     *
+     * `$ordered = false` dipakai oleh pemanggil yang menambah GROUP BY.
+     * PostgreSQL MENEGAKKAN keras: pada query ber-GROUP BY, setiap kolom di
+     * ORDER BY harus muncul di SELECT atau di GROUP BY. Karena itu urutan
+     * observation_id/sort_order/id yang di sini TIDAK BOLEH ikut pada query
+     * agregasi - PostgreSQL menolaknya dengan SQLSTATE 42803 "must appear in
+     * the GROUP BY clause".
+     *
+     * SQLite dan MySQL memaafkan kombinasi itu, jadi bug ini tidak pernah
+     * muncul di tes lokal; ia khusus PostgreSQL, yaitu produksi.
      *
      * @param  array<string, mixed>  $filters
      * @return Builder<ObservationMedication>
      */
-    private function administrationQuery(Encounter $encounter, array $filters = []): Builder
+    private function administrationQuery(Encounter $encounter, array $filters = [], bool $ordered = true): Builder
     {
         $query = ObservationMedication::query()
             ->whereHas('observation', fn (Builder $observation) => $observation->where('encounter_id', $encounter->getKey()))
-            ->with('observation:id,encounter_id,observation_date,observation_time,recorded_by,recorded_at')
-            ->orderByDesc('observation_id')
-            ->orderByDesc('sort_order')
-            ->orderByDesc('id');
+            ->with('observation:id,encounter_id,observation_date,observation_time,recorded_by,recorded_at');
+
+        if ($ordered) {
+            $query->orderByDesc('observation_id')
+                ->orderByDesc('sort_order')
+                ->orderByDesc('id');
+        }
 
         $category = $filters['category'] ?? $filters['kategori'] ?? null;
 
