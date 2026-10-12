@@ -22,6 +22,20 @@
         'diagnosis' => 'Diagnosis',
         'procedure' => 'Prosedur',
     ];
+
+    /*
+     * Syarat tombol "Selesaikan Episode":
+     *   - hanya dokter (docs/AUTHORIZATION.md: "Tutup encounter" hanya dokter);
+     *   - hanya episode yang masih AKTIF.
+     *
+     * Episode yang sudah selesai TIDAK menampilkan tombol sama sekali, bukan
+     * tombol disabled: menutupnya sudah tidak mungkin, jadi menawarkan aksi
+     * yang pasti gagal hanya menambah ruang untuk salah klik.
+     *
+     * Penegakan sebenarnya ada di server (route role:dokter + DischargeService),
+     * jadi di sini hanya ditampilkan apa yang memang bisa dilakukan.
+     */
+    $canDischarge = ($canCloseEpisode ?? false) && ($p['status'] ?? null) === 'aktif';
 @endphp
 <article class="flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm print-border transition hover:border-sky-300 hover:shadow-md"
          data-purpose="patient-card"
@@ -127,5 +141,24 @@
            class="no-print inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-sky-700">
             <i class="fa-solid fa-folder-open" aria-hidden="true"></i>Buka
         </a>
+        {{--
+            Pemicu modal "Selesaikan Episode".
+
+            type="button" supaya tidak ikut submit form apa pun. Tombol ini
+            berada DI DALAM <article> yang memuat <a href> ke profil; ia bukan
+            anak dari <a>, jadi kliknya tidak menjadi navigasi.
+
+            Syaratnya ($canDischarge) dihitung di atas file ini.
+        --}}
+        @if ($canDischarge)
+            <button type="button"
+                    class="no-print inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-100"
+                    data-purpose="discharge-open"
+                    data-encounter="{{ $p['encounterId'] }}"
+                    data-name="{{ $p['name'] }}"
+                    title="Tutup episode perawatan ini">
+                <i class="fa-solid fa-door-open" aria-hidden="true"></i>Selesaikan
+            </button>
+        @endif
     </div>
 </article>

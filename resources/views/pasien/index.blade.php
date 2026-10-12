@@ -27,6 +27,26 @@
         ['label' => 'Cocok Filter', 'value' => $stats['matching'], 'sub' => 'dari '.$stats['total'].' episode', 'icon' => 'fa-filter', 'tone' => 'emerald', 'detail' => 'Jumlah episode yang cocok dengan pencarian, unit, dan status yang dipilih.'],
     ];
     $resetUrl = route('pasien');
+
+    /*
+     * Template rute "Selesaikan Episode" dengan placeholder __ENCOUNTER__.
+     *
+     * Setiap kartu punya kode episode yang berbeda, jadi action form tidak
+     * bisa ditulis Blade sekaligus - ia diisi dari data-encounter tombol
+     * pemicu saat modal dibuka (lihat skrip di bawah).
+     *
+     * route() dipakai supaya pembentukannya tetap milik Laravel: prefix,
+     * domain, dan escaping tidak ditulis ulang manual di JavaScript.
+     *
+     * Placeholder-nya sengaja bukan "enc-..." supaya tidak ikut tertimpa
+     * str_replace: ia memuat __ENCOUNTER__ sebagai substring, dan urutannya
+     * penting.
+     */
+    $dischargeTemplate = str_replace(
+        'enc-__ENCOUNTER__',
+        '__ENCOUNTER__',
+        route('encounter.discharge', ['encounter' => 'enc-__ENCOUNTER__'])
+    );
 @endphp
 
 <main id="print-area" class="mx-auto w-full max-w-[1720px] space-y-4 px-4 pb-16 pt-5 sm:px-6" data-page-region="content">
@@ -181,6 +201,19 @@
     @include('partials.add-patient-modal')
 @endif
 
+{{--
+    Modal "Selesaikan Episode" (partials/discharge-modal.blade.php).
+
+    Dipakai variabel yang sama dengan tombol "Tambah Pasien" di atas. Keduanya
+    dibatasi ke dokter karena docs/AUTHORIZATION.md menutup episode hanya untuk
+    peran itu. Bedanya: tombol pemicu "Selesaikan Episode" per kartu juga
+    memeriksa status episode di partials/patient-card.blade.php, sedangkan
+    modal ini dirender sekali untuk seluruh halaman.
+--}}
+@if ($canCloseEpisode)
+    @include('partials.discharge-modal')
+@endif
+
 <footer class="mx-auto w-full max-w-[1720px] px-4 pb-8 text-center text-[11px] text-slate-400 no-print sm:px-6" data-page-region="footer">
     SIMRS RSP Dr. H. A. Rotinsulu &mdash; Modul Monitoring Kritis Terpadu ICU
 </footer>
@@ -214,6 +247,106 @@
             printButton.addEventListener('click', function () {
                 window.print();
             });
+        }
+
+        /*
+         * Modal "Selesaikan Episode" (partials/discharge-modal.blade.php).
+         *
+         * Progressive enhancement. Gate JavaScript di sini HANYA mengaktifkan
+         * tombol submit dan mengisi action form - itu kenyamanan, bukan
+         * penjaga. Kata "SELESAI" divalidasi ulang di server
+         * (DischargeController::guardConfirmation), jadi permintaan yang dibuat
+         * tanpa JavaScript, atau dengan kolom konfirmasi dikosongkan, tetap
+         * ditolak.
+         *
+         * Blade menulis action form sebagai placeholder; di sini action itu
+         * diisi dari data-encounter tombol pemicu, karena rute memakai
+         * encounter_id dan setiap kartu punya kode yang berbeda.
+         */
+        var dischargeModal = document.getElementById('dischargeModal');
+
+        if (dischargeModal) {
+            var dischargeForm = dischargeModal.querySelector('[data-purpose="discharge-form"]');
+
+            /*
+             * Template rute dibuat pada blok PHP di atas tag script ini.
+             */
+            var dischargeTemplate = @json($dischargeTemplate);
+
+            var dischargeName = dischargeModal.querySelector('[data-purpose="discharge-patient-name"]');
+            var dischargeConfirm = document.getElementById('dischargeConfirmation');
+            var dischargeSubmit = dischargeModal.querySelector('[data-purpose="discharge-submit"]');
+            var dischargeHidden = dischargeForm.querySelector('input[name="encounter"]');
+            var confirmationWord = @json(\App\Services\DischargeService::CONFIRMATION_WORD);
+
+            var openModal = function (button) {
+                var encounter = button.getAttribute('data-encounter');
+                var name = button.getAttribute('data-name') || '';
+
+                if (! encounter || ! dischargeTemplate) {
+                    return;
+                }
+
+                dischargeHidden.value = encounter;
+                dischargeForm.action = dischargeTemplate.replace('__ENCOUNTER__', encodeURIComponent(encounter));
+                dischargeName.textContent = name;
+
+                // Nama pasien ikut diletakkan di title supaya petugas bisa
+                // memastikan menutup episode yang benar sebelum mengetik.
+                dischargeModal.querySelector('[data-purpose="discharge-confirm-field"] input').placeholder = confirmationWord;
+
+                dischargeModal.classList.remove('hidden');
+                dischargeModal.classList.add('flex');
+
+                // Kunci fokus ke isian pertama supaya keyboard tidak menggulir
+                // ke belakang halaman di belakang modal.
+                var firstField = document.getElementById('dischargeDate');
+                if (firstField) {
+                    firstField.focus();
+                }
+            };
+
+            var closeModal = function () {
+                dischargeModal.classList.add('hidden');
+                dischargeModal.classList.remove('flex');
+            };
+
+            document.querySelectorAll('[data-purpose="discharge-open"]').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    openModal(button);
+                });
+            });
+
+            dischargeModal.querySelectorAll('[data-purpose="discharge-close"]').forEach(function (button) {
+                button.addEventListener('click', closeModal);
+            });
+
+            // Klik area gelap di luar panel menutup modal, seperti dialog
+            // bawaan browser.
+            dischargeModal.addEventListener('click', function (event) {
+                if (event.target === dischargeModal) {
+                    closeModal();
+                }
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && ! dischargeModal.classList.contains('hidden')) {
+                    closeModal();
+                }
+            });
+
+            // Tombol submit TIDAK aktif sebelum konfirmasi tepat. Ini yang
+            // membuat "SELESAI" terasa lebih dari sekadar teks.
+            var syncSubmit = function () {
+                var typed = dischargeConfirm.value.replace(/\s+/g, '').toUpperCase();
+                var matches = typed === confirmationWord;
+
+                dischargeSubmit.disabled = ! matches;
+                dischargeSubmit.classList.toggle('opacity-50', ! matches);
+            };
+
+            dischargeConfirm.addEventListener('input', syncSubmit);
+            syncSubmit();
         }
     })();
 </script>

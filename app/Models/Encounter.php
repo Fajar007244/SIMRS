@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\DiagnosisType;
+use App\Enums\DischargeDestination;
 use App\Enums\EncounterStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -32,6 +33,9 @@ class Encounter extends Model
         'bed',
         'admitted_at',
         'discharged_at',
+        'discharged_by',
+        'discharge_destination',
+        'discharge_note',
         'attending_physician',
         'status',
         'diagnosis_summary',
@@ -46,6 +50,7 @@ class Encounter extends Model
             'status' => EncounterStatus::class,
             'admitted_at' => 'datetime',
             'discharged_at' => 'datetime',
+            'discharge_destination' => DischargeDestination::class,
             'latest_observation_at' => 'datetime',
         ];
     }
@@ -155,6 +160,23 @@ class Encounter extends Model
     */
 
     public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('status', EncounterStatus::AKTIF->value);
+    }
+
+    public function scopeClosed(Builder $query): Builder
+    {
+        return $query->where('status', EncounterStatus::SELESAI->value);
+    }
+
+    /**
+     * Episode yang masih boleh ditulisi.
+     *
+     * dipakai middleware penulisan, bukan hanya UI: setelah episode ditutup
+     * observasi/obat/CPPT baru harus ditolak, sementara Membacanya tetap
+     * boleh - riwayat medis tidak pernah hilang hanya karena episode selesai.
+     */
+    public function scopeWritable(Builder $query): Builder
     {
         return $query->where('status', EncounterStatus::AKTIF->value);
     }

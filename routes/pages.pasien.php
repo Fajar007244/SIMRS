@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DischargeController;
 use App\Http\Controllers\PasienController;
 use Illuminate\Support\Facades\Route;
 
@@ -31,4 +32,22 @@ Route::middleware('auth')->group(function () {
     Route::post('/pasien', [PasienController::class, 'store'])
         ->middleware('role:dokter')
         ->name('pasien.store');
+
+    /*
+     * PENUTUPAN EPISODE (discharge).
+     *
+     * Disediakan di file ini, bukan di routes/pages.profil.php, karena yang
+     * memicu adalah tombol pada kartu di census /pasien.
+     *
+     * `role:dokter` mengikuti baris "Tutup encounter (discharge)" di
+     * docs/AUTHORIZATION.md: hanya dokter yang menutup episode. Perawat dan
+     * bidan tetap bisa membaca episode yang sudah selesai.
+     *
+     * Rute ini TIDAK memakai segment terpisah seperti modul klinis lain
+     * (/encounters/{encounter}/observasi). Penutupan bukan halaman: ia aksi
+     * sekali jalan dari modal di kartu, jadi bentuknya POST ke aksi tunggal.
+     */
+    Route::post('/encounters/{encounter}/discharge', [DischargeController::class, 'store'])
+        ->middleware('role:dokter')
+        ->name('encounter.discharge');
 });

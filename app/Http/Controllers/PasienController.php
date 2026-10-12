@@ -115,6 +115,7 @@ class PasienController extends Controller
             'filters' => $filters,
             'stats' => $this->stats($census, count($rows)),
             'canCreateAdmission' => $request->user()?->isDoctor() ?? false,
+            'canCloseEpisode' => $request->user()?->isDoctor() ?? false,
             'knownPatients' => $knownPatients,
             'knownPatientNames' => $this->knownPatientNames($census),
             'duplicateMrn' => $duplicateMrn,
