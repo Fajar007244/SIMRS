@@ -19,7 +19,7 @@
  *                               Arteri / Dower / CAUTI / CLABSI / Infus /
  *                               Tindakan Lain di kanan
  *   section-notes-and-vent      Ventilasi (textarea) + Tindakan Keperawatan
- *                               (select) + kotak "Rencana Implementasi Lanjutan"
+ *                               (select)
  *
  * TIDAK ADA SATU PUN atribut `required` di formulir ini, sama seperti
  * prototype. Semua numeric input memakai placeholder "Isi angka".
@@ -137,13 +137,6 @@ const NURSING_ACTIONS = [
     'Suction ETT berkala & oral hygiene dg Chlorhexidine 0.2%',
     'Reposisikan miring kanan / miring kiri per 2 jam',
     'Aff Infus & Pasang Ulang Baru',
-];
-
-/** Kotak "Rencana Implementasi Lanjutan" - hanya baca, bukan input. */
-const PLAN_SUGGESTIONS = [
-    'Monitoring hemodinamik per jam',
-    'Evaluasi balance cairan tiap 6 jam',
-    'Kultur sputum ulang bila febris > 38.5 °C',
 ];
 
 /**
@@ -1910,20 +1903,13 @@ function onHeaderScore(value) {
                             <select
                                 id="inputTindakanKeperawatan"
                                 v-model="form.nursingAction"
-                                class="input mb-2"
+                                class="input"
                                 data-purpose="nursing-action"
                             >
                                 <option v-for="action in NURSING_ACTIONS" :key="action" :value="action">
                                     {{ action }}
                                 </option>
                             </select>
-
-                            <div class="rounded border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-600">
-                                <p class="mb-1 font-bold text-slate-700">Rencana Implementasi Lanjutan:</p>
-                                <ul class="list-inside list-disc space-y-0.5">
-                                    <li v-for="suggestion in PLAN_SUGGESTIONS" :key="suggestion">{{ suggestion }}</li>
-                                </ul>
-                            </div>
                         </div>
                     </div>
                 </fieldset>
