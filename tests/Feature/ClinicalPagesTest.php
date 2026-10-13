@@ -221,6 +221,83 @@ class ClinicalPagesTest extends TestCase
             ->assertSee(route('profil', ['encounter' => $finished->encounter_id]), false);
     }
 
+    public function test_pasien_ajax_search_returns_only_the_changed_parts(): void
+    {
+        $match = Encounter::factory()->create(['status' => 'aktif']);
+        $other = Encounter::factory()->create(['status' => 'aktif']);
+
+        Diagnosis::query()->create([
+            'encounter_id' => $match->getKey(),
+            'type' => 'utama',
+            'text' => 'Preeklamsia berat',
+            'code' => 'O14.1',
+        ]);
+
+        $response = $this->actingAs($this->perawat())->getJson('/pasien?search=eklamsia');
+
+        $response->assertOk();
+        $response->assertJsonPath('matching', 1);
+        $response->assertJsonStructure(['html', 'summary', 'matching']);
+
+        $html = (string) $response->json('html');
+        $this->assertStringContainsString(route('profil', ['encounter' => $match->encounter_id]), $html);
+        $this->assertStringNotContainsString(route('profil', ['encounter' => $other->encounter_id]), $html);
+        $this->assertStringContainsString('Menampilkan 1 episode', (string) $response->json('summary'));
+    }
+
+    public function test_pasien_ajax_search_respects_the_status_filter(): void
+    {
+        $finished = Encounter::factory()->discharged()->create();
+
+        Diagnosis::query()->create([
+            'encounter_id' => $finished->getKey(),
+            'type' => 'utama',
+            'text' => 'Preeklamsia berat',
+            'code' => 'O14.1',
+        ]);
+
+        $this->actingAs($this->perawat())
+            ->getJson('/pasien?search=eklamsia')
+            ->assertOk()
+            ->assertJsonPath('matching', 0);
+
+        $this->actingAs($this->perawat())
+            ->getJson('/pasien?search=eklamsia&status=all')
+            ->assertOk()
+            ->assertJsonPath('matching', 1);
+    }
+
+    public function test_pasien_ajax_search_keeps_the_discharge_button_for_doctors(): void
+    {
+        $encounter = Encounter::factory()->create(['status' => 'aktif']);
+
+        $doctorHtml = $this->actingAs(User::factory()->dokter()->create())
+            ->getJson('/pasien?status=all')
+            ->assertOk()
+            ->json('html');
+
+        $this->assertStringContainsString('data-purpose="discharge-open"', (string) $doctorHtml);
+
+        $nurseHtml = $this->actingAs($this->perawat())
+            ->getJson('/pasien?status=all')
+            ->assertOk()
+            ->json('html');
+
+        $this->assertStringNotContainsString('data-purpose="discharge-open"', (string) $nurseHtml);
+    }
+
+    public function test_pasien_ajax_search_as_guest_leaks_nothing(): void
+    {
+        Encounter::factory()->create(['status' => 'aktif']);
+
+        // Tamu meminta JSON: Laravel menjawab 401, bukan redirect dan bukan
+        // data. Yang penting tidak ada baris pasien yang bocor.
+        $response = $this->getJson('/pasien?search=a');
+
+        $response->assertUnauthorized();
+        $this->assertStringNotContainsString('patient-census', $response->getContent());
+    }
+
     public function test_pasien_filters_are_applied_without_erroring(): void
     {
         Encounter::factory()->unit('ICU Bed 01', 'Bed 01')->create();

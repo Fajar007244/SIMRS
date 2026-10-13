@@ -9,6 +9,7 @@ use App\Models\Patient;
 use App\Services\AdmissionService;
 use App\Services\Support\ClinicalFormat;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -80,7 +81,7 @@ class PasienController extends Controller
      *
      * @param  array<string, string>  $filters  search | unit | status
      */
-    public function index(Request $request): View
+    public function index(Request $request): View|JsonResponse
     {
         $filters = $this->filters($request);
 
@@ -105,6 +106,29 @@ class PasienController extends Controller
 
         // Filter (search / unit / status) ikut terbawa saat pindah halaman.
         $patients->withQueryString();
+
+        /*
+         * Pencarian AJAX (lihat skrip di pasien/index.blade.php): kembalikan
+         * HANYA potongan yang berubah sebagai JSON, bukan seluruh halaman.
+         * Markup kartu tetap dirender server lewat partial yang sama dengan
+         * full page load, jadi tidak ada duplikasi template di JavaScript.
+         *
+         * Tanpa JavaScript, request ke sini adalah GET biasa dan jatuh ke
+         * view penuh di bawah - tombol Terapkan tetap berfungsi.
+         */
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'html' => view('partials.patient-census', [
+                    'patients' => $patients,
+                    'resetUrl' => route('pasien'),
+                    'canCloseEpisode' => $request->user()?->isDoctor() ?? false,
+                ])->render(),
+                'summary' => view('partials.patient-summary', [
+                    'patients' => $patients,
+                ])->render(),
+                'matching' => $patients->total(),
+            ]);
+        }
 
         $knownPatients = $this->knownPatients($census);
         $duplicateMrn = trim((string) old('mrn'));

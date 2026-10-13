@@ -24,7 +24,7 @@
         ['label' => 'Total Pasien', 'value' => $stats['total'], 'sub' => 'seluruh episode rawat', 'icon' => 'fa-users', 'tone' => 'slate', 'detail' => 'Jumlah seluruh episode perawatan, berapa pun statusnya.'],
         ['label' => 'Pasien Aktif', 'value' => $stats['active'], 'sub' => 'status episode = Aktif', 'icon' => 'fa-user-check', 'tone' => 'sky', 'detail' => 'Episode yang masih berjalan dan bisa dibuka modul kliniknya.'],
         ['label' => 'Berisiko Tinggi', 'value' => $stats['atRisk'], 'sub' => 'EWS high / emergency', 'icon' => 'fa-triangle-exclamation', 'tone' => 'red', 'detail' => 'Pasien dengan risiko EWS terakhir high atau emergency.'],
-        ['label' => 'Cocok Filter', 'value' => $stats['matching'], 'sub' => 'dari '.$stats['total'].' episode', 'icon' => 'fa-filter', 'tone' => 'emerald', 'detail' => 'Jumlah episode yang cocok dengan pencarian, unit, dan status yang dipilih.'],
+        ['label' => 'Cocok Filter', 'value' => $stats['matching'], 'sub' => 'dari '.$stats['total'].' episode', 'icon' => 'fa-filter', 'tone' => 'emerald', 'detail' => 'Jumlah episode yang cocok dengan pencarian, unit, dan status yang dipilih.', 'purpose' => 'stat-matching'],
     ];
     $resetUrl = route('pasien');
 
@@ -92,7 +92,7 @@
                     <span class="truncate text-[10px] font-bold uppercase tracking-wider">{{ $card['label'] }}</span>
                     <i class="shrink-0 fa-solid {{ $card['icon'] }} {{ $cardTone['icon'] }}" aria-hidden="true"></i>
                 </div>
-                <div class="stat-value {{ $cardTone['value'] }}">{{ $card['value'] }}</div>
+                <div class="stat-value {{ $cardTone['value'] }}"@isset($card['purpose']) data-purpose="{{ $card['purpose'] }}"@endisset>{{ $card['value'] }}</div>
                 <div class="mt-0.5 text-[10px] text-slate-400">{{ $card['sub'] }}</div>
             </div>
         @endforeach
@@ -155,41 +155,13 @@
                 </button>
             @endif
         </form>
-        <p class="field-hint">
-            Menampilkan {{ $patients->total() }} episode
-            @if ($patients->total() > $patients->perPage())
-                (halaman {{ $patients->currentPage() }} dari {{ $patients->lastPage() }})
-            @endif
-            &middot; diurutkan dari risiko EWS tertinggi.
-        </p>
+        @include('partials.patient-summary', ['patients' => $patients])
     </section>
 
-    {{-- Census pasien --}}
-    @if ($patients->isEmpty())
-        <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-purpose="patient-empty">
-            <div class="empty-block">
-                <i class="fa-solid fa-inbox text-lg text-slate-400" aria-hidden="true"></i>
-                <p class="mt-2 text-xs font-semibold text-slate-700">Belum ada pasien yang sesuai filter</p>
-                <p class="mx-auto mt-1 max-w-md text-[11px] leading-relaxed text-slate-500">
-                    Ubah kata kunci, pilih unit lain, atau set status ke "Semua status".
-                </p>
-                <a href="{{ $resetUrl }}" class="btn btn-secondary mt-3">
-                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>Reset filter
-                </a>
-            </div>
-        </section>
-    @else
-        <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-purpose="patient-census">
-            @foreach ($patients as $patient)
-                @include('partials.patient-card', ['p' => $patient])
-            @endforeach
-        </section>
-
-        {{-- Paginasi (view bawaan Tailwind Laravel) --}}
-        <nav class="no-print" aria-label="Navigasi halaman" data-purpose="patient-pagination">
-            {{ $patients->onEachSide(1)->links() }}
-        </nav>
-    @endif
+    {{-- Census pasien (partial dipakai ulang oleh respons AJAX) --}}
+    <div id="censusRegion">
+        @include('partials.patient-census', ['patients' => $patients, 'resetUrl' => $resetUrl, 'canCloseEpisode' => $canCloseEpisode])
+    </div>
 </main>
 
 {{--
@@ -223,10 +195,16 @@
 @push('scripts')
 <script>
     /*
-     * Progressive enhancement HANYA - form filter tetap bekerja penuh tanpa
-     * JavaScript (method="GET" + tombol Terapkan). Skrip ini hanya
-     * (:a) mengirim form saat <select> berubah, (:b) mengirim form saat
-     * teks pencarian berhenti diketik (debounce), (:c) memicu Cetak.
+     * Filter tanpa reload (AJAX) - progressive enhancement.
+     *
+     * Tanpa JavaScript, form ini adalah GET biasa + tombol Terapkan dan semua
+     * tetap bekerja (full page load). Dengan JavaScript, pengiriman form
+     * (ketikan pencarian, perubahan dropdown, tombol Terapkan, Enter)
+     * diambil alih menjadi fetch: server mengembalikan potongan HTML yang
+     * sama persis dengan full page load (partials/patient-census), lalu
+     * client menukarnya ke #censusRegion. Markup kartu tidak diduplikasi di
+     * sini - satu-satunya sumber adalah Blade di server.
+     *
      * Sengaja vanilla, tanpa framework, supaya halaman ini tetap hidup walau
      * bundel SPA gagal dimuat.
      */
@@ -234,55 +212,166 @@
         'use strict';
 
         var form = document.querySelector('[data-purpose="patient-filters"] form');
+        var censusRegion = document.getElementById('censusRegion');
 
-        if (form) {
-            form.querySelectorAll('[data-autosubmit]').forEach(function (element) {
-                element.addEventListener('change', function () {
-                    form.submit();
-                });
-            });
+        if (! form || ! censusRegion) {
+            return;
+        }
 
-            /*
-             * Cari sambil mengetik: kirim form 450ms setelah ketikan terakhir.
-             * Tanpa debounce, tiap huruf memicu full page load (mahal di
-             * Vercel). Tanpa autosubmit sama sekali, petugas harus Enter/
-             * Terapkan tiap kali - tidak cocok untuk pencarian nama cepat.
-             *
-             * Tombol Terapkan tetap ada untuk dropdown unit/status dan untuk
-             * mode tanpa JavaScript: event 'input' di bawah tidak jalan bila
-             * JS mati, dan form GET biasa tetap terkirim lewat tombol itu.
-             */
-            var searchInput = document.getElementById('searchInput');
-            var searchTimer = null;
+        var searchInput = document.getElementById('searchInput');
+        var searchTimer = null;
+        var requestSeq = 0;
 
-            if (searchInput) {
-                // Setelah reload hasil pencarian, kembalikan fokus + karet ke
-                // ujung teks supaya petugas bisa lanjut mengetik.
-                if (searchInput.value !== '') {
-                    searchInput.focus();
+        /*
+         * Ambil hasil filter lewat fetch, tukar ke halaman tanpa reload.
+         * pushUrl: perbarui address bar supaya hasil bisa di-bookmark dan
+         * tombol kembali tetap masuk akal.
+         */
+        var fetchResults = function (url, pushUrl) {
+            var seq = requestSeq + 1;
+            requestSeq = seq;
 
-                    try {
-                        searchInput.setSelectionRange(
-                            searchInput.value.length,
-                            searchInput.value.length
-                        );
-                    } catch (ignore) {
-                        // type="search" selalu mendukung ini; abaikan bila tidak.
-                    }
+            censusRegion.setAttribute('aria-busy', 'true');
+            censusRegion.style.opacity = '0.55';
+
+            var done = function () {
+                // Hanya respons terbaru yang boleh menyentuh DOM; yang basi
+                // (diketik cepat) diabaikan supaya hasil tidak melompat.
+                if (seq !== requestSeq) {
+                    return;
                 }
 
-                searchInput.addEventListener('input', function () {
-                    if (searchTimer !== null) {
-                        window.clearTimeout(searchTimer);
-                    }
+                censusRegion.removeAttribute('aria-busy');
+                censusRegion.style.opacity = '';
+            };
 
-                    searchTimer = window.setTimeout(function () {
-                        searchTimer = null;
-                        form.submit();
-                    }, 450);
-                });
+            window.fetch(url, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            }).then(function (response) {
+                if (! response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+
+                return response.json();
+            }).then(function (data) {
+                if (seq !== requestSeq) {
+                    return;
+                }
+
+                censusRegion.innerHTML = data.html;
+
+                var summary = document.querySelector('[data-purpose="result-summary"]');
+
+                if (summary && typeof data.summary === 'string') {
+                    summary.outerHTML = data.summary;
+                }
+
+                var matching = document.querySelector('[data-purpose="stat-matching"]');
+
+                if (matching && typeof data.matching !== 'undefined') {
+                    matching.textContent = data.matching;
+                }
+
+                if (pushUrl && url !== window.location.href) {
+                    window.history.replaceState(null, '', url);
+                }
+
+                done();
+            }).catch(function () {
+                if (seq !== requestSeq) {
+                    return;
+                }
+
+                done();
+
+                // Gagal (jaringan putus, session habis): jangan diam. Full
+                // reload lewat submit biasa akan menampilkan keadaan yang
+                // benar - termasuk redirect ke login bila session habis.
+                form.submit();
+            });
+        };
+
+        var currentUrl = function () {
+            var params = new URLSearchParams(new FormData(form));
+
+            // FormData ikut mengirim tombol submit bila ada; buang supaya URL
+            // bersih dan stabil.
+            return form.action + '?' + params.toString();
+        };
+
+        var fetchCurrentFilters = function (pushUrl) {
+            fetchResults(currentUrl(), pushUrl !== false);
+        };
+
+        // Dropdown unit/status: langsung saring tanpa menunggu Terapkan.
+        // Tombol Terapkan tetap ada dan tetap berfungsi (submit biasa bila
+        // JS mati; fetch bila JS hidup - lihat di bawah).
+        form.querySelectorAll('[data-autosubmit]').forEach(function (element) {
+            element.addEventListener('change', function () {
+                fetchCurrentFilters(true);
+            });
+        });
+
+        if (searchInput) {
+            // Tautan hasil bersama (?search=...) yang dibuka langsung:
+            // kembalikan fokus + karet ke ujung teks supaya bisa lanjut mengetik.
+            if (searchInput.value !== '') {
+                searchInput.focus();
+
+                try {
+                    searchInput.setSelectionRange(
+                        searchInput.value.length,
+                        searchInput.value.length
+                    );
+                } catch (ignore) {
+                    // type="search" selalu mendukung ini; abaikan bila tidak.
+                }
             }
+
+            /*
+             * Cari sambil mengetik: fetch 400ms setelah ketikan terakhir.
+             * Tanpa debounce, tiap huruf memicu request (mahal di Vercel
+             * walau tanpa reload). Tanpa fetch sama sekali, petugas harus
+             * Enter/Terapkan tiap kali.
+             */
+            searchInput.addEventListener('input', function () {
+                if (searchTimer !== null) {
+                    window.clearTimeout(searchTimer);
+                }
+
+                searchTimer = window.setTimeout(function () {
+                    searchTimer = null;
+                    fetchCurrentFilters(true);
+                }, 400);
+            });
         }
+
+        // Tombol Terapkan + Enter: tetap berfungsi, hanya tanpa reload.
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            if (searchTimer !== null) {
+                window.clearTimeout(searchTimer);
+                searchTimer = null;
+            }
+
+            fetchCurrentFilters(true);
+        });
+
+        // Paginasi hasil saringan: tautan halaman ikut tanpa reload.
+        censusRegion.addEventListener('click', function (event) {
+            var link = event.target.closest('nav[data-purpose="patient-pagination"] a');
+
+            if (! link || ! link.href) {
+                return;
+            }
+
+            event.preventDefault();
+            fetchResults(link.href, true);
+        });
 
         var printButton = document.getElementById('printButton');
 
@@ -354,10 +443,16 @@
                 dischargeModal.classList.remove('flex');
             };
 
-            document.querySelectorAll('[data-purpose="discharge-open"]').forEach(function (button) {
-                button.addEventListener('click', function () {
+            // Delegasi di document (bukan bind per tombol) supaya tombol pada
+            // kartu hasil pencarian AJAX ikut berfungsi: innerHTML #censusRegion
+            // diganti tiap saring, dan tombol baru tidak akan punya listener
+            // bila di-bind sekali saat load.
+            document.addEventListener('click', function (event) {
+                var button = event.target.closest('[data-purpose="discharge-open"]');
+
+                if (button) {
                     openModal(button);
-                });
+                }
             });
 
             dischargeModal.querySelectorAll('[data-purpose="discharge-close"]').forEach(function (button) {
