@@ -107,7 +107,6 @@
                 <input id="searchInput" name="search" type="search" value="{{ $filters['search'] }}"
                        placeholder="Cari nama, No. RM, atau diagnosa..."
                        class="input py-2 pl-10 pr-3 text-sm" autocomplete="off">
-                <p class="field-hint">Hasil tersaring otomatis saat mengetik.</p>
             </div>
 
             <div class="field w-full sm:w-auto">

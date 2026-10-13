@@ -89,14 +89,20 @@ class AdmissionService
             // membocorkan filter status/unit di atas. Tanpa grup ini,
             // orWhereHas('diagnoses') akan mengembalikan episode berstatus
             // lain yang kebetulan cocok diagnosanya.
+            //
+            // whereLike (bukan where+like): di PostgreSQL dikompilasi menjadi
+            // ILIKE sehingga pencarian case-insensitive ("siti" cocok dengan
+            // "SITI NURHALIZA"). LIKE biasa di Postgres case-sensitive,
+            // sehingga pencarian huruf kecil selalu 0 hasil di produksi
+            // walau lolos di SQLite lokal yang LIKE-nya case-insensitive.
             $query->where(fn (Builder $q) => $q
                 ->whereHas('patient', fn (Builder $patient) => $patient
-                    ->where('name', 'like', $like)
-                    ->orWhere('mrn', 'like', $like)
-                    ->orWhere('patient_id', 'like', $like))
+                    ->whereLike('name', $like)
+                    ->orWhereLike('mrn', $like)
+                    ->orWhereLike('patient_id', $like))
                 ->orWhereHas('diagnoses', fn (Builder $diagnosis) => $diagnosis
-                    ->where('text', 'like', $like)
-                    ->orWhere('code', 'like', $like)));
+                    ->whereLike('text', $like)
+                    ->orWhereLike('code', $like)));
         }
 
         $encounters = $query->get();

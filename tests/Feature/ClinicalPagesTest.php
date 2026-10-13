@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Diagnosis;
 use App\Models\Encounter;
+use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia;
@@ -219,6 +220,26 @@ class ClinicalPagesTest extends TestCase
             ->get('/pasien?search=eklamsia&status=all')
             ->assertOk()
             ->assertSee(route('profil', ['encounter' => $finished->encounter_id]), false);
+    }
+
+    public function test_pasien_search_is_case_insensitive(): void
+    {
+        // LIKE di PostgreSQL case-sensitive (berbeda dengan SQLite lokal):
+        // pencarian huruf kecil harus tetap cocok dengan nama huruf besar.
+        // Diimplementasikan lewat whereLike (-> ILIKE di Postgres).
+        $encounter = Encounter::factory()->forPatient(
+            Patient::factory()->create(['name' => 'SITI NURHALIZA'])
+        )->create(['status' => 'aktif']);
+
+        $this->actingAs($this->perawat())
+            ->get('/pasien?search=siti')
+            ->assertOk()
+            ->assertSee(route('profil', ['encounter' => $encounter->encounter_id]), false);
+
+        $this->actingAs($this->perawat())
+            ->getJson('/pasien?search=SiTi')
+            ->assertOk()
+            ->assertJsonPath('matching', 1);
     }
 
     public function test_pasien_ajax_search_returns_only_the_changed_parts(): void
