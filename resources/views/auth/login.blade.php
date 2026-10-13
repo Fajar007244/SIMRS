@@ -94,6 +94,12 @@
                 </button>
             </form>
 
+            {{--
+                Kotak kredensial demo. HANYA dirender di luar production:
+                menampilkan username+password valid ke publik di production
+                sama dengan membagikan kunci. Lihat H2 di 00-SECURITY-AUDIT.
+            --}}
+            @if (! app()->environment('production'))
             <div class="border-t border-slate-100 bg-slate-50 px-6 py-4">
                 <p class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                     <i class="fa-solid fa-circle-info text-sky-600"></i> Akun demo pilot
@@ -116,6 +122,7 @@
                     Kredensial demo milik pilot lokal. Jangan memakai akun yang sama di lingkungan produksi.
                 </p>
             </div>
+            @endif
         </section>
 
         <p class="mt-4 text-center text-[11px] text-slate-500">

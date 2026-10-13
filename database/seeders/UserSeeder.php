@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use RuntimeException;
 
 /**
  * Tiga akun petugas, di-port verbatim dari phase1/auth.js (ACCOUNTS).
@@ -54,22 +55,41 @@ class UserSeeder extends Seeder
     /**
      * Upsert berdasarkan `username` (ada unique index) sehingga `db:seed`
      * boleh dijalankan berulang tanpa bentrok.
+     *
+     * SEEDER INI TIDAK BOLEH JALAN DI PRODUCTION. Kredensial di bawah adalah
+     * kredensial demo yang tercantum di repository dan dokumentasi, dan
+     * `updateOrCreate` akan MENULIS ULANG password akun produksi dengan nilai
+     * yang diketahui publik setiap kali dijalankan. Guard di bawah membuat
+     * kesalahan itu gagal keras, bukan gagal diam-diam.
+     *
+     * @throws RuntimeException bila APP_ENV=production.
      */
     public function run(): void
     {
+        if (app()->environment('production')) {
+            throw new RuntimeException(
+                'UserSeeder tidak boleh dijalankan di production: kredensial demo '
+                .'tercantum di repository dan akan menimpa password akun produksi.'
+            );
+        }
+
         foreach ($this->accounts as $account) {
-            User::query()->updateOrCreate(
+            // `role` sengaja ditulis lewat forceFill, bukan mass-assignment:
+            // kolom otorisasi tidak ada di $fillable User supaya tidak bisa
+            // ditulis lewat request. Lihat App\Models\User.
+            $user = User::query()->updateOrCreate(
                 ['username' => $account['username']],
                 [
                     'name' => $account['name'],
                     'email' => $account['username'].'@rsprotinsulu.local',
                     'password' => Hash::make($account['password']),
-                    'role' => $account['role'],
                     'specialty' => $account['specialty'],
                     'phone' => $account['phone'],
                     'email_verified_at' => now(),
                 ]
             );
+
+            $user->forceFill(['role' => $account['role']])->save();
         }
     }
 }

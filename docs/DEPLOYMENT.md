@@ -339,9 +339,9 @@ Tiga peran, dari `App\Enums\UserRole`.
 
 | Peran | Username demo | Password |
 |---|---|---|
-| Perawat | `perawat` | `perawat123` |
-| Bidan | `bidan` | `bidan123` |
-| Dokter | `dokter` | `dokter123` |
+| Perawat | `perawat` | _demo lokal saja_ |
+| Bidan | `bidan` | _demo lokal saja_ |
+| Dokter | `dokter` | _demo lokal saja_ |
 
 ### 5.1 Matriks rute
 

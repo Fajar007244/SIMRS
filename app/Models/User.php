@@ -17,6 +17,14 @@ class User extends Authenticatable
     /**
      * The attributes that are mass assignable.
      *
+     * `role` SENGAJA tidak ada di sini. Kolom otorisasi tidak boleh
+     * mass-assignable: begitu ada endpoint update profil memakai
+     * $user->update($request->all()), user bisa meng-eskalasi role-nya
+     * sendiri menjadi dokter. Perubahan role hanya lewat jalur eksplisit:
+     * $user->forceFill(['role' => ...])->save() (lihat UserSeeder).
+     * Factory tetap bisa memakai role karena Factory::create berjalan
+     * di dalam Model::unguarded().
+     *
      * @var list<string>
      */
     protected $fillable = [
@@ -24,7 +32,6 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role',
         'specialty',
         'phone',
     ];

@@ -72,6 +72,16 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // Jaring pengaman kedua untuk H2: seluruh seeder di sini adalah data
+        // demo (akun + pasien + observasi contoh). Tidak ada yang boleh jalan
+        // di production. UserSeeder punya guard sendiri; guard di sini
+        // menangkap pemanggilan langsung ke seeder lain.
+        if (app()->environment('production')) {
+            throw new \RuntimeException(
+                'DatabaseSeeder hanya untuk data demo lokal. Jangan jalankan di production.'
+            );
+        }
+
         $this->call([
             UserSeeder::class,
             PatientEncounterSeeder::class,

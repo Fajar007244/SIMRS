@@ -366,7 +366,7 @@ Lalu, untuk setiap request HTTP:
    `npm run build` tidak jalan di dalam image.
 3. Buka `https://<domain-railway-kamu>/pasien` tanpa login → harus
    **mengarah (redirect) ke `/login`**, bukan 500.
-4. Login dengan `perawat` / `perawat123` → harus masuk ke daftar pasien.
+4. Login dengan akun demo lokal (`perawat` + password seed lokal) → harus masuk ke daftar pasien.
    Kalau masuk tapi **halaman putih kosong**, buka Developer Tools → Console,
    biasanya ada error Vue; periksa langkah 2.
 5. Buka `/encounters/enc-159853-icu-20260906/observasi` → harus muncul
@@ -624,7 +624,7 @@ Log **tidak** hilang saat container di-restart, selama tidak ada *redeploy*.
 - [ ] `/up` → 200
 - [ ] `/login` → tampil **dengan CSS**
 - [ ] `/pasien` → redirect ke `/login` kalau belum login
-- [ ] Login `perawat` / `perawat123` → daftar pasien tampil
+- [ ] Login akun demo lokal → daftar pasien tampil
 - [ ] `/encounters/enc-159853-icu-20260906/observasi` → flowsheet tampil
 
 ### Setiap kali deploy

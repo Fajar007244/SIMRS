@@ -67,9 +67,9 @@ Tiga akun, sudah dibuat oleh `php artisan db:seed`.
 
 | Peran | Username | Password |
 |---|---|---|
-| Perawat | `perawat` | `perawat123` |
-| Bidan | `bidan` | `bidan123` |
-| Dokter | `dokter` | `dokter123` |
+| Perawat | `perawat` | _demo lokal, lihat UserSeeder_ |
+| Bidan | `bidan` | _demo lokal, lihat UserSeeder_ |
+| Dokter | `dokter` | _demo lokal, lihat UserSeeder_ |
 
 > **Jangan pakai akun ini di produksi.** Buat user sendiri dan hapus data demo.
 > Pandannya ada di [docs/RENDER.md §8](docs/RENDER.md#8-migrasi-dan-seeding).

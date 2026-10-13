@@ -1523,9 +1523,9 @@ Dari `App\Enums\UserRole` (hanya tiga nilai yang ada) + `UserSeeder`:
 
 | username | password | `auth.user.id` | `auth.user.name` | `role` | `roleLabel` | `specialty` | `initials` |
 |---|---|---|---|---|---|---|---|
-| `perawat` | `perawat123` | `1` | `Ns. Tri Handayani` | `perawat` | `Perawat` | `Perawat ICU` | `NH` |
-| `bidan` | `bidan123` | `2` | `Bd. Sari Wulandari` | `bidan` | `Bidan` | `Bidan` | `SW` |
-| `dokter` | `dokter123` | `3` | `dr. Rangga Saputra` | `dokter` | `Dokter` | `Konsultan Intensif` | `RS` |
+| `perawat` | _(seed lokal)_ | `1` | `Ns. Tri Handayani` | `perawat` | `Perawat` | `Perawat ICU` | `NH` |
+| `bidan` | _(seed lokal)_ | `2` | `Bd. Sari Wulandari` | `bidan` | `Bidan` | `Bidan` | `SW` |
+| `dokter` | _(seed lokal)_ | `3` | `dr. Rangga Saputra` | `dokter` | `Dokter` | `Konsultan Intensif` | `RS` |
 
 > `roleLabel` = `UserRole::label()` -> `Perawat` / `Bidan` / `Dokter`
 > (**bukan** "Perawat ICU"; itu `specialty`).

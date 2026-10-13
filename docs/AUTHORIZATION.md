@@ -66,13 +66,15 @@ Perilaku `app/Http/Middleware/RequireRole.php`:
   encounter), itu diputuskan per-modul ketika rute-nya ditulis, bukan di level
   peran.
 
-## Akun demo
+## Akun demo (khusus pengembangan lokal)
 
-| Username    | Password     | Nama              | specialty          |
-|-------------|--------------|-------------------|--------------------|
-| `perawat`   | `perawat123` | Ns. Tri Handayani | Perawat ICU        |
-| `bidan`     | `bidan123`   | Bd. Sari Wulandari | Bidan              |
-| `dokter`    | `dokter123`  | dr. Rangga Saputra | Konsultan Intensif |
+| Username    | Nama              | specialty          |
+|-------------|-------------------|--------------------|
+| `perawat`   | Ns. Tri Handayani | Perawat ICU        |
+| `bidan`     | Bd. Sari Wulandari | Bidan              |
+| `dokter`    | dr. Rangga Saputra | Konsultan Intensif |
 
-Dibuat oleh `database/seeders/UserSeeder.php`. Password di-hash bcrypt lewat cast
-`hashed` pada model `User`.
+Password default hanya untuk seed lokal (`database/seeders/UserSeeder.php`)
+dan TIDAK dicantumkan di sini. Seeder menolak berjalan di production;
+akun produksi wajib memakai password yang diganti manual. Kotak kredensial
+di halaman login juga disembunyikan otomatis di production.

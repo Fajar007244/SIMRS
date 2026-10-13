@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequireRole;
+use App\Http\Middleware\SecurityHeaders;
 use App\Support\DatabaseErrorReport;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -38,6 +39,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleInertiaRequests::class,
         ]);
+
+        // Header keamanan (CSP, X-Frame-Options, dll). Didaftarkan GLOBAL,
+        // bukan di grup web: respons 404/500 dihasilkan sebelum route cocok,
+        // sehingga middleware grup route tidak berjalan untuknya. Aplikasi
+        // ini 100% web (tidak ada routes/api.php), jadi global aman.
+        $middleware->append(SecurityHeaders::class);
 
         // Halaman login adalah Blade, bukan SPA. Semua tamu yang belum login
         // (apa pun rute yang dicoba) diarahkan ke sana. Rute intended
