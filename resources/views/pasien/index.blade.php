@@ -107,6 +107,7 @@
                 <input id="searchInput" name="search" type="search" value="{{ $filters['search'] }}"
                        placeholder="Cari nama, No. RM, atau diagnosa..."
                        class="input py-2 pl-10 pr-3 text-sm" autocomplete="off">
+                <p class="field-hint">Hasil tersaring otomatis saat mengetik.</p>
             </div>
 
             <div class="field w-full sm:w-auto">
@@ -224,7 +225,8 @@
     /*
      * Progressive enhancement HANYA - form filter tetap bekerja penuh tanpa
      * JavaScript (method="GET" + tombol Terapkan). Skrip ini hanya
-     * (:a) mengirim form saat <select> berubah, (:b) memicu Cetak.
+     * (:a) mengirim form saat <select> berubah, (:b) mengirim form saat
+     * teks pencarian berhenti diketik (debounce), (:c) memicu Cetak.
      * Sengaja vanilla, tanpa framework, supaya halaman ini tetap hidup walau
      * bundel SPA gagal dimuat.
      */
@@ -239,6 +241,47 @@
                     form.submit();
                 });
             });
+
+            /*
+             * Cari sambil mengetik: kirim form 450ms setelah ketikan terakhir.
+             * Tanpa debounce, tiap huruf memicu full page load (mahal di
+             * Vercel). Tanpa autosubmit sama sekali, petugas harus Enter/
+             * Terapkan tiap kali - tidak cocok untuk pencarian nama cepat.
+             *
+             * Tombol Terapkan tetap ada untuk dropdown unit/status dan untuk
+             * mode tanpa JavaScript: event 'input' di bawah tidak jalan bila
+             * JS mati, dan form GET biasa tetap terkirim lewat tombol itu.
+             */
+            var searchInput = document.getElementById('searchInput');
+            var searchTimer = null;
+
+            if (searchInput) {
+                // Setelah reload hasil pencarian, kembalikan fokus + karet ke
+                // ujung teks supaya petugas bisa lanjut mengetik.
+                if (searchInput.value !== '') {
+                    searchInput.focus();
+
+                    try {
+                        searchInput.setSelectionRange(
+                            searchInput.value.length,
+                            searchInput.value.length
+                        );
+                    } catch (ignore) {
+                        // type="search" selalu mendukung ini; abaikan bila tidak.
+                    }
+                }
+
+                searchInput.addEventListener('input', function () {
+                    if (searchTimer !== null) {
+                        window.clearTimeout(searchTimer);
+                    }
+
+                    searchTimer = window.setTimeout(function () {
+                        searchTimer = null;
+                        form.submit();
+                    }, 450);
+                });
+            }
         }
 
         var printButton = document.getElementById('printButton');
