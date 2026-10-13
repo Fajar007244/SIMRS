@@ -51,7 +51,9 @@ class AdmissionService
      * Satu baris per episode, untuk kartu dan tabel daftar pasien.
      *
      * FILTER:
-     *   search -> nama / MRM / patient_id (partial, case-insensitive)
+     *   search -> nama / MRM / patient_id / teks diagnosa (partial,
+     *             case-insensitive). Diagnosa ikut dicari karena placeholder
+     *             form menjanjikan "Cari nama, No. RM, atau diagnosa".
      *   unit   -> nama unit pelayanan
      *   status -> status episode; default AKTIF. Beri string kosong
      *             atau 'all' untuk menampilkan seluruh status.
@@ -83,10 +85,18 @@ class AdmissionService
         if (is_string($search) && trim($search) !== '') {
             $like = '%'.trim($search).'%';
 
-            $query->whereHas('patient', fn (Builder $patient) => $patient
-                ->where('name', 'like', $like)
-                ->orWhere('mrn', 'like', $like)
-                ->orWhere('patient_id', 'like', $like));
+            // Dikelompokkan dalam satu where(...) supaya OR di dalamnya tidak
+            // membocorkan filter status/unit di atas. Tanpa grup ini,
+            // orWhereHas('diagnoses') akan mengembalikan episode berstatus
+            // lain yang kebetulan cocok diagnosanya.
+            $query->where(fn (Builder $q) => $q
+                ->whereHas('patient', fn (Builder $patient) => $patient
+                    ->where('name', 'like', $like)
+                    ->orWhere('mrn', 'like', $like)
+                    ->orWhere('patient_id', 'like', $like))
+                ->orWhereHas('diagnoses', fn (Builder $diagnosis) => $diagnosis
+                    ->where('text', 'like', $like)
+                    ->orWhere('code', 'like', $like)));
         }
 
         $encounters = $query->get();

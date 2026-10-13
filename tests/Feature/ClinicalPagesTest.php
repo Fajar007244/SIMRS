@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Diagnosis;
 use App\Models\Encounter;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -157,6 +158,67 @@ class ClinicalPagesTest extends TestCase
         $response->assertOk();
         $response->assertSee(route('profil', ['encounter' => $active->encounter_id]), false);
         $response->assertDontSee(route('profil', ['encounter' => $finished->encounter_id]), false);
+    }
+
+    public function test_pasien_search_finds_a_diagnosis_text(): void
+    {
+        $match = Encounter::factory()->create(['status' => 'aktif']);
+        $other = Encounter::factory()->create(['status' => 'aktif']);
+
+        Diagnosis::query()->create([
+            'encounter_id' => $match->getKey(),
+            'type' => 'utama',
+            'text' => 'Preeklamsia berat',
+            'code' => 'O14.1',
+        ]);
+
+        $response = $this->actingAs($this->perawat())->get('/pasien?search=eklamsia');
+
+        $response->assertOk();
+        $response->assertSee(route('profil', ['encounter' => $match->encounter_id]), false);
+        $response->assertDontSee(route('profil', ['encounter' => $other->encounter_id]), false);
+    }
+
+    public function test_pasien_search_finds_a_diagnosis_code(): void
+    {
+        $match = Encounter::factory()->create(['status' => 'aktif']);
+
+        Diagnosis::query()->create([
+            'encounter_id' => $match->getKey(),
+            'type' => 'utama',
+            'text' => 'Anemia ringan',
+            'code' => 'D64.9',
+        ]);
+
+        $response = $this->actingAs($this->perawat())->get('/pasien?search=D64');
+
+        $response->assertOk();
+        $response->assertSee(route('profil', ['encounter' => $match->encounter_id]), false);
+    }
+
+    public function test_pasien_search_still_respects_the_status_filter(): void
+    {
+        $finished = Encounter::factory()->discharged()->create();
+
+        Diagnosis::query()->create([
+            'encounter_id' => $finished->getKey(),
+            'type' => 'utama',
+            'text' => 'Preeklamsia berat',
+            'code' => 'O14.1',
+        ]);
+
+        // Filter default "aktif": episode selesai yang cocok diagnosanya
+        // tetap tidak boleh muncul.
+        $this->actingAs($this->perawat())
+            ->get('/pasien?search=eklamsia')
+            ->assertOk()
+            ->assertDontSee(route('profil', ['encounter' => $finished->encounter_id]), false);
+
+        // Dengan status=all, episode itu muncul.
+        $this->actingAs($this->perawat())
+            ->get('/pasien?search=eklamsia&status=all')
+            ->assertOk()
+            ->assertSee(route('profil', ['encounter' => $finished->encounter_id]), false);
     }
 
     public function test_pasien_filters_are_applied_without_erroring(): void
