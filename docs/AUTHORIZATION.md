@@ -33,6 +33,24 @@ dan bidan boleh melihat ASMED, diagnosis, dan prosedur yang sudah diisi dokter
 karena itu bagian dari konteks asuhan. Dokter melihat semuanya. Yang dibatasi
 adalah **menulis**, bukan membaca.
 
+## Jejak audit (UU PDP Pasal 26)
+
+Karena membaca tidak dibatasi, setiap akses terautentikasi ke modul klinis
+dicatat di tabel `access_logs` oleh `App\Http\Middleware\LogRecordAccess`:
+siapa, data pasien mana (`encounter_id` + `patient_id`), modul apa, baca
+atau tulis, kapan. Hanya metadata — tidak pernah isi rekam medis.
+
+Aturan tabel: append-only (tanpa `updated_at`, tanpa endpoint hapus),
+tanpa foreign key (log harus selamat dari penghapusan data yang dirujuk),
+dan kegagalan tulis ditelan supaya audit tidak pernah mengubah hasil klinis.
+Retensi mengikuti kebijakan RS (patokan umum 3 tahun); penghapusan hanya
+lewat job terjadwal.
+
+Akun `perawat` / `bidan` / `dokter` di bawah adalah akun **demo untuk trial
+klien** — disengaja ada, bukan kebocoran. Passwordnya tidak dicantumkan di
+sini; seeder menolak berjalan di production dan kotak kredensial di halaman
+login disembunyikan otomatis di production.
+
 ## Cara memasang middleware
 
 ```php

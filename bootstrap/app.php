@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\LogRecordAccess;
 use App\Http\Middleware\RequireRole;
 use App\Http\Middleware\SecurityHeaders;
 use App\Support\DatabaseErrorReport;
@@ -38,6 +39,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->web(append: [
             HandleInertiaRequests::class,
+            // Jejak audit akses rekam medis (UU PDP Pasal 26). Di grup web
+            // saja: /up tidak punya user dan tidak perlu dicatat.
+            LogRecordAccess::class,
         ]);
 
         // Header keamanan (CSP, X-Frame-Options, dll). Didaftarkan GLOBAL,
